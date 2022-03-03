@@ -82,7 +82,7 @@ for dirFile in rawFiles:
                 # ++ Nisse ++ Pandas is 14x faster than numpy here:
                 # Signal = np.loadtxt(fnames)[:, 1:]
                 # Stimulus = np.loadtxt(snames)
-
+                # t2 = stop_watch.time()
                 # Faster as numpy.loadtext() but slower as pandas:
                 # Stim_line = []
                 # with open(snames) as f:  # closes file after all the lines have been processed
@@ -225,4 +225,6 @@ for dirFile in rawFiles:
                     print(cell_response_index)
 
 # In total this is now ca. 7 times faster!
+t2 = stop_watch.time()
+print(t2-t1)
 print('Finished!')
