@@ -293,8 +293,9 @@ def data_viewer(rec_name, f_raw, sig_t, ref_im, st_rec, protocol, rois_dic, good
     # Create the initial figure ----------
     fig, ax = plt.subplots(2, 1)
     # Plot Ref Image
-    ref_im_x = ref_im.shape[0]
-    ref_im_y = ref_im.shape[1]
+    # fig2, ax2 = plt.subplots()
+    # ax2.imshow(ref_im)
+
     # re_im_obj = ax[0].imshow(ref_im, extent=[0, ref_im_y, 0, ref_im_x], aspect='equal')
     re_im_obj = ax[0].imshow(ref_im)
     ax[0].axis('off')  # clear x-axis and y-axis
@@ -556,7 +557,8 @@ def data_viewer(rec_name, f_raw, sig_t, ref_im, st_rec, protocol, rois_dic, good
 
     # [left, bottom, width, height]
     # Filter Order Slider
-    filter_order_slider_ax = plt.axes([0.2, 0.8, 0.1, 0.1])
+    # filter_order_slider_ax = plt.axes([0.2, 0.8, 0.1, 0.1])
+    filter_order_slider_ax = fig.add_axes([0.2, 0.8, 0.1, 0.1])
     filter_order_slider = Slider(
         filter_order_slider_ax,
         'order',
@@ -571,7 +573,7 @@ def data_viewer(rec_name, f_raw, sig_t, ref_im, st_rec, protocol, rois_dic, good
 
     # Filter Window Slider
     # only odd numbers!
-    filter_win_slider_ax = plt.axes([0.12, 0.4, 0.02, 0.4])
+    filter_win_slider_ax = fig.add_axes([0.12, 0.4, 0.02, 0.4])
     filter_win_slider = Slider(
         filter_win_slider_ax,
         'filter',
@@ -585,7 +587,7 @@ def data_viewer(rec_name, f_raw, sig_t, ref_im, st_rec, protocol, rois_dic, good
     filter_win_slider.on_changed(callback.update_filter_win_slider)
 
     # FBS Percentile Slider
-    fbs_per_slider_ax = plt.axes([0.08, 0.4, 0.02, 0.4])
+    fbs_per_slider_ax = fig.add_axes([0.08, 0.4, 0.02, 0.4])
     fbs_per_slider = Slider(
         fbs_per_slider_ax,
         'per',
@@ -600,7 +602,7 @@ def data_viewer(rec_name, f_raw, sig_t, ref_im, st_rec, protocol, rois_dic, good
 
     # FBS Window Size Slider
     # Create a plt.axes object to hold the slider
-    fbs_slider_ax = plt.axes([0.05, 0.4, 0.02, 0.4])
+    fbs_slider_ax = fig.add_axes([0.05, 0.4, 0.02, 0.4])
     # Add a slider to the plt.axes object
     fbs_slider = Slider(
         fbs_slider_ax,
