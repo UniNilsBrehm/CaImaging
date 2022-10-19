@@ -3,12 +3,23 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import analysis_util_functions as uf
 from IPython import embed
-import multipagetiff as mtif
 from read_roi import read_roi_zip
-import cv2
 import os
+import sys
 
-compute_reg = True
+uf.msg_box(
+    'INFO',
+    'You can give extra arguments to show only selected cells:\n -good : good cells (LM Score) '
+    , sep='+'
+)
+
+show_selection = False
+if len(sys.argv) > 1:
+    command = sys.argv[1]
+
+    if command == '-good':
+        show_selection = True
+
 # Select Directory and get all files
 file_name = uf.select_file([('Recording Files', 'raw.txt')])
 data_file_name = os.path.split(file_name)[1]
@@ -42,12 +53,11 @@ rois_in_ref = read_roi_zip(f'{rec_dir}/refs/{rec_name}_ROI.tif_RoiSet.zip')
 
 # Import raw fluorescence traces (rois)
 # It is important that the header is equal to the correct ROI number
-if 'good_cells' in data_file_name:
-    # Only the selected good ones
-    f_raw = pd.read_csv(f'{rec_dir}/{data_file_name}', decimal='.', sep='\t', index_col=0)
-else:
-    # All ROIS of the recording
-    f_raw = pd.read_csv(f'{rec_dir}/{data_file_name}', decimal='.', sep='\t', index_col=0, header=None)
+header_labels = []
+for k, v in enumerate(rois_in_ref):
+    header_labels.append(f'roi_{k+1}')
+f_raw = pd.read_csv(f'{rec_dir}/{data_file_name}', decimal='.', sep='\t', index_col=0, header=None)
+f_raw.columns = header_labels
 
 # Estimate frame rate
 fr_rec = uf.estimate_sampling_rate(data=f_raw, f_stimulation=stimulus, print_msg=False)
@@ -81,93 +91,35 @@ ramp_parameters = protocol[protocol['Stimulus'] == 'Ramp']['Duration'].unique()
 stimulus_parameters = pd.DataFrame()
 stimulus_parameters['parameter'] = np.append(step_parameters, ramp_parameters)
 stimulus_parameters['type'] = np.append(['Step'] * len(step_parameters), ['Ramp'] * len(ramp_parameters))
-if compute_reg:
-    # Compute delta f over f
-    f_raw_filtered = uf.filter_raw_data(sig=f_raw, win=12, o=2)
-    fbs = np.percentile(f_raw_filtered, 5, axis=0)
-    df_f = (f_raw_filtered-fbs) / fbs
 
-    # Compute Calcium Impulse Response Function (CIRF)
-    cirf = uf.create_cif(fr_rec, tau=8)
+# Import Linear Regression Scoring
+good_cells_by_score_csv = pd.read_csv(f'{rec_dir}/{rec_name}_lm_good_score_rois.csv')
+final_mean_score = pd.read_csv(f'{rec_dir}/{rec_name}_lm_mean_scores.csv')
+all_cells = np.load(f'{rec_dir}/{rec_name}_lm_results.npy', allow_pickle=True).item()
+score_th = 0.15
 
-    # Select Stimulus Type
-
-    # Create Binary and cut out ROI Ca responses for each stimulus type
-    stimulus_regression = []
-    for k in range(stimulus_parameters.shape[0]):
-        stim = protocol[(protocol['Stimulus'] == stimulus_parameters.iloc[k, 1]) &
-                        (protocol['Duration'] == stimulus_parameters.iloc[k, 0])]
-        binary, reg, response_c, reg_c = uf.create_binary_trace(
-            sig=df_f, cirf=cirf, start=stim['Onset_Time'], end=stim['Offset_Time'],
-            fr=fr_rec, ca_delay=0, pad_before=5, pad_after=20, low=0, high=1
-        )
-        dummy = {'binary': binary, 'reg': reg, 'response_cutout': response_c, 'reg_cutout': reg_c}
-        stimulus_regression.append(dummy)
-    all_cells = dict.fromkeys(df_f.keys())
-    for rois in df_f:  # loop through rois (cells)
-        lm = []
-        for k, stim_type in enumerate(stimulus_regression):  # loop through stimulus types (6)
-            score, r_squared, slope, response_trace = [], [], [], []
-            for kk, repeat_reg in enumerate(stim_type['reg_cutout']):  # loop through repetitions (5)
-                dummy_response = stim_type['response_cutout'][kk][rois]
-                # Linear Model for one cell, one stimulus type and one repetition
-                sc, rr, aa = uf.apply_linear_model(xx=repeat_reg, yy=dummy_response, norm_reg=True)
-                score.append(sc)
-                r_squared.append(rr)
-                slope.append(aa)
-                response_trace.append(dummy_response)
-            lm.append({'score': score, 'r_squared': r_squared, 'slope': slope, 'response': response_trace})
-            # all stimulus types for one cell
-        all_cells[rois] = lm
-    # Access: roi = 27, stimulus type nr 4 and repetition nr 2
-    # a = all_cells['27'][3]['score'][2]
-    mean_score = dict.fromkeys(df_f)
-    mean_r_squared = dict.fromkeys(df_f)
-    mean_slope = dict.fromkeys(df_f)
-    for rois in df_f:
-        score_stim_type_means = []
-        r_squared_stim_type_means = []
-        slope_stim_type_means = []
-        response_means = []
-        for k, stim_type in enumerate(stimulus_regression):
-            score_stim_type_means.append(np.mean(all_cells[rois][k]['score']))
-            r_squared_stim_type_means.append(np.mean(all_cells[rois][k]['r_squared']))
-            slope_stim_type_means.append(np.mean(all_cells[rois][k]['slope']))
-            response_means.append(np.mean(all_cells[rois][k]['response']))
-
-        mean_score[rois] = score_stim_type_means
-        mean_r_squared[rois] = r_squared_stim_type_means
-        mean_slope[rois] = slope_stim_type_means
-    # Indices are the different stimulus types (6) showing mean score values (all 5 repetitions)
-    mean_score = pd.DataFrame(mean_score)
-    mean_r_squared = pd.DataFrame(mean_r_squared)
-    mean_slope = pd.DataFrame(mean_slope)
-
-    # print(mean_score)
-    # print(mean_r_squared)
-    # print(mean_slope)
-    # print(stimulus_parameters)
-    final_mean_score = pd.concat([stimulus_parameters, mean_score], axis=1)
-# Create Anatomy Labels
-# check if there is already a anatomy label
-check = [s for s in os.listdir(rec_dir) if 'anatomy' in s]
-if not check:
-    anatomy = pd.DataFrame(columns=df_f.keys())
-    anatomy.to_csv(f'{rec_dir}/{rec_name}_anatomy.csv')
+# Select Good Data
+if show_selection:
+    if good_cells_by_score_csv['roi'].shape[0] == 0:
+        print('')
+        uf.msg_box('WARNING', 'There are no cells with high enough LM Scores!', '-')
+        pd.DataFrame().to_csv(f'{rec_dir}/{rec_name}_NO_GOOD_CELLS.csv')
+        exit()
+    data = f_raw[good_cells_by_score_csv['roi']]
 else:
-    uf.msg_box('INFO', 'FOUND ANATOMY LABELS', '-')
-    anatomy = pd.read_csv(f'{rec_dir}/{rec_name}_anatomy.csv')
-    print(anatomy)
+    data = f_raw
 
 # Start Data Viewer
 uf.data_viewer(
     rec_name=rec_name,
-    f_raw=f_raw,
+    f_raw=data,
     sig_t=roi_time_axis,
     ref_im=img_ref,
     st_rec=stimulus,
     protocol=protocol,
     rois_dic=rois_in_ref,
     good_cells_list=good_cells_list,
-    scores=final_mean_score
+    good_scores=good_cells_by_score_csv,
+    scores=final_mean_score,
+    score_th=score_th
 )

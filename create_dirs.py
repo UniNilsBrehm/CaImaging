@@ -1,19 +1,50 @@
 import os
 import pandas as pd
 import shutil
+import analysis_util_functions as uf
+from IPython import embed
 
 
 def wenke_create_directories(f_base_path):
-    # Create directory
-    dir_names = ['01', '02', '03', '04', '05', '06', '07', '01_2', '02_2', '03_2', '04_2', '05_2']
-    for kk in dir_names:
+    # Create Directories for all recordings in the selected directory
+    # and copy all corresponding files into new directory
+    file_names = [s for s in os.listdir(f_base_path) if 'raw' in s]
+    for ff in file_names:
+        rec_name = ff[:10]
         try:
-            # Create target Directory
-            os.mkdir(f'{f_base_path}/{kk}')
-            print("Directory ", kk, " Created ")
-        except FileExistsError:
-            print(f'Directory: {kk} already exists!')
+            os.makedirs(f'{f_base_path}/{rec_name}/')
+            print(f'Directory: {rec_name} created')
 
+        except FileExistsError:
+            print(f'Directory: {rec_name} already exists!')
+        try:
+            os.makedirs(f'{f_base_path}/{rec_name}/refs/')
+        except FileExistsError:
+            print(f'Directory: {rec_name}/refs/ already exists!')
+
+        # Move all found files into corresponding new directory
+        txt = f'{rec_name}_'
+        rec_file_names = [s for s in os.listdir(f_base_path) if txt in s]
+        # Copy and rename file
+        for rec_f in rec_file_names:
+            src = f'{f_base_path}/{rec_f}'
+            dst = f'{f_base_path}/{rec_name}/{rec_f}'
+            print(src)
+            print(dst)
+            shutil.copyfile(src, dst)
+            # os.remove(src)
+
+        txt = f'{rec_name}_'
+        ref_dir = f'{f_base_path}/refs/'
+        rec_file_names = [s for s in os.listdir(ref_dir) if txt in s]
+        # Copy and rename file
+        for rec_f in rec_file_names:
+            src = f'{f_base_path}/refs/{rec_f}'
+            dst = f'{f_base_path}/{rec_name}/refs/{rec_f}'
+            print(src)
+            print(dst)
+            shutil.copyfile(src, dst)
+            # os.remove(src)
 
 
 def create_directories(f_base_path):
@@ -121,7 +152,7 @@ def rename_and_move_files(f_base_path):
 
 if __name__ == '__main__':
     # MAIN PART
-    b_dir = input('Enter base directory: ')
+    b_dir = uf.select_dir()
     # write_metadata(b_dir)
     # create_directories(b_dir)
     # rename_and_move_files(b_dir)

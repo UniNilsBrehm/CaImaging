@@ -258,7 +258,7 @@ def check_directory_structure(dir_path, dir_control):
         return False
 
 
-def data_viewer(rec_name, f_raw, sig_t, ref_im, st_rec, protocol, rois_dic, good_cells_list, scores):
+def data_viewer(rec_name, f_raw, sig_t, ref_im, st_rec, protocol, rois_dic, good_cells_list, good_scores, scores, score_th):
     """ fraw: raw fluorescence values"""
 
     print('')
@@ -274,7 +274,7 @@ def data_viewer(rec_name, f_raw, sig_t, ref_im, st_rec, protocol, rois_dic, good
     # Get Stimulus Info
     st_on = protocol['Onset_Time']
     st_off = protocol['Offset_Time']
-
+    score_th = score_th
     # Get Roi Names
     f_rois_all = f_raw.keys()
     # Normalize raw values to max = 1
@@ -284,6 +284,7 @@ def data_viewer(rec_name, f_raw, sig_t, ref_im, st_rec, protocol, rois_dic, good
     y_lim_min = -0.1
 
     reg_scores = scores
+    good_scores = good_scores
     good_c = good_cells_list
 
     # Select first data to plot: ROI 1
@@ -292,6 +293,7 @@ def data_viewer(rec_name, f_raw, sig_t, ref_im, st_rec, protocol, rois_dic, good
 
     # Create the initial figure ----------
     fig, ax = plt.subplots(2, 1)
+    fig.canvas.manager.set_window_title(f'Recording: {rec_name}')
     # Plot Ref Image
     # fig2, ax2 = plt.subplots()
     # ax2.imshow(ref_im)
@@ -306,18 +308,15 @@ def data_viewer(rec_name, f_raw, sig_t, ref_im, st_rec, protocol, rois_dic, good
     stim_text_obj = {}
     for k in range(len(st_on)):
         ax[1].fill_between([st_on[k], st_off[k]], [y_lim, y_lim], color=marker_color,  edgecolor=marker_color, alpha=0.3)
-        stim_text_1 = protocol['Stimulus'].iloc[k]
-        stim_text_2 = protocol['Duration'].iloc[k]
-        stim_text_obj[k] = ax[1].text(
-            protocol['Onset_Time'].iloc[k], 1, f'{stim_text_1[0]}\n{np.round(stim_text_2/1000, 2)}',
-            fontsize=6, color=(0, 0, 0), horizontalalignment='left', verticalalignment='center'
-        )
+        # stim_text_1 = protocol['Stimulus'].iloc[k]
+        # stim_text_2 = protocol['Duration'].iloc[k]
+        # stim_text_obj[k] = ax[1].text(
+        #     protocol['Onset_Time'].iloc[k], 1, f'{stim_text_1[0]}\n{np.round(stim_text_2/1000, 2)}',
+        #     fontsize=6, color=(0, 0, 0), horizontalalignment='left', verticalalignment='center'
+        # )
     remove_axis(ax[1], box=False)
     # Plot Stimulus Trace
     ax[0].set_title(f'ROI: {1}')
-
-    # protocol labels
-
 
     # Plot Response Traces
     l, = ax[1].plot(sig_t, sig, color='k')
@@ -348,7 +347,9 @@ def data_viewer(rec_name, f_raw, sig_t, ref_im, st_rec, protocol, rois_dic, good
     class Index:
         # Initialize parameter values
 
-        th_reg = 0.2
+        switch_to_good_cells_status = False
+        cells_by_score = good_scores
+        th_reg = score_th
         ind = 0
         df_win = 0
         df_per = 0
@@ -359,7 +360,8 @@ def data_viewer(rec_name, f_raw, sig_t, ref_im, st_rec, protocol, rois_dic, good
         data = f_raw_norm
         y_lim = np.max(data.max())
         f_rois = f_rois_all
-        selected_roi = f_rois[0]
+        selected_roi_nr = 0
+        selected_roi = f_rois[selected_roi_nr]
         cell_color = 'red'
         good_cells_list = good_c
         if len(good_c) <= 1:
@@ -380,28 +382,30 @@ def data_viewer(rec_name, f_raw, sig_t, ref_im, st_rec, protocol, rois_dic, good
         def turn_page(self):
             # Select new ROI Number
             self.selected_roi = self.f_rois[self.ind]
-
+            self.selected_roi_nr = int(self.f_rois[self.ind][4:])
             # Check Cell Button
-            self.flip_button(status=self.good_cells_list.iloc[int(self.selected_roi) - 1, 0])
+            # self.flip_button(status=self.good_cells_list.iloc[int(self.selected_roi) - 1, 0])
 
             # Update Data Display
             ydata = self.data[self.selected_roi]
             l.set_ydata(ydata)
 
+            # Update title
+            ax[0].set_title(f'ROI: {self.selected_roi_nr} ({self.ind+1} / {len(self.f_rois)})', color='black')
+
             # Update Ref Image
-            re_im_obj.set_data(self.roi_images[int(self.selected_roi) - 1])
+            re_im_obj.set_data(self.roi_images[self.selected_roi_nr - 1])
 
             # Update Ref Image Label
-            text_obj.set_text(f'{self.selected_roi}')
-            text_obj.set_position(self.roi_pos[int(self.selected_roi) - 1])
+            text_obj.set_text(f'{self.selected_roi_nr}')
+            text_obj.set_position(self.roi_pos[self.selected_roi_nr - 1])
 
             # Update Score Text
-            for kk, vv in enumerate(reg_scores[self.selected_roi]):
-                if vv >= self.th_reg:
-                    stim_text_obj[kk].set_color((1, 0, 0))
-                else:
-                    stim_text_obj[kk].set_color((0, 0, 0))
-
+            # for kk, vv in enumerate(reg_scores[self.selected_roi]):
+            #     if vv >= self.th_reg:
+            #         stim_text_obj[kk].set_color((1, 0, 0))
+            #     else:
+            #         stim_text_obj[kk].set_color((0, 0, 0))
             if any(reg_scores[self.selected_roi] >= self.th_reg):
                 text_score_obj.set_color((1, 0, 0))
             else:
@@ -507,51 +511,51 @@ def data_viewer(rec_name, f_raw, sig_t, ref_im, st_rec, protocol, rois_dic, good
                     fast=True
                     )
 
-        def good_cell(self, event):
-            if self.good_cells_list[self.ind] == 0:
-                self.good_cells_list[self.ind] = 1
-                self.flip_button(status=self.good_cells_list[self.ind])
-            else:
-                self.good_cells_list[self.ind] = 0
-                self.flip_button(status=self.good_cells_list[self.ind])
-
-        def flip_button(self, status):
-            if status == 1:
-                # Switch Button
-                b_good_cell.label.set_text("GOOD CELL")
-                rr = self.f_rois[self.ind]
-                ax[0].set_title(f'GOOD ROI: {rr} ({len(self.f_rois)})', color='green')
-
-                # b_good_cell.color = 'green'
-                # b_good_cell.hovercolor = 'red'
-            else:
-                # Switch Button
-                b_good_cell.label.set_text("BAD CELL")
-                rr = self.f_rois[self.ind]
-                ax[0].set_title(f'ROI: {rr} ({len(self.f_rois)})', color='black')
-
-                # b_good_cell.color = 'red'
-                # b_good_cell.hovercolor = 'red'
-
-        def export_good_cells(self, event):
-            save_dir = select_dir()
-            f_list = os.listdir(save_dir)
-            file_name = f'{rec_name}_good_cells.csv'
-            # check if there already is a list of good cells
-            dummy = [s for s in f_list if file_name in s]
-            if dummy:
-                answer = messagebox.askyesno(title='Overwrite', message='Overwrite ?')
-            else:
-                answer = True
-            if answer:
-                good_cells_df = pd.DataFrame()
-                good_cells_df['roi'] = np.arange(1, len(f_rois) + 1, 1)
-                good_cells_df['quality'] = self.good_cells_list
-                good_cells_df.to_csv(f'{save_dir}/{file_name}', index=False)
-                messagebox.showinfo(title='Good Cells', message='Successfully exported good cells')
-                print('GOOD CELLS EXPORTED!')
-            else:
-                print('GOOD CELLS NOT EXPORTED!')
+        # def good_cell(self, event):
+        #     if self.good_cells_list[self.ind] == 0:
+        #         self.good_cells_list[self.ind] = 1
+        #         self.flip_button(status=self.good_cells_list[self.ind])
+        #     else:
+        #         self.good_cells_list[self.ind] = 0
+        #         self.flip_button(status=self.good_cells_list[self.ind])
+        #
+        # def flip_button(self, status):
+        #     if status == 1:
+        #         # Switch Button
+        #         b_good_cell.label.set_text("GOOD CELL")
+        #         rr = self.f_rois[self.ind]
+        #         ax[0].set_title(f'GOOD ROI: {rr} ({len(self.f_rois)})', color='green')
+        #
+        #         # b_good_cell.color = 'green'
+        #         # b_good_cell.hovercolor = 'red'
+        #     else:
+        #         # Switch Button
+        #         b_good_cell.label.set_text("BAD CELL")
+        #         rr = self.f_rois[self.ind]
+        #         ax[0].set_title(f'ROI: {rr} ({len(self.f_rois)})', color='black')
+        #
+        #         # b_good_cell.color = 'red'
+        #         # b_good_cell.hovercolor = 'red'
+        #
+        # def export_good_cells(self, event):
+        #     save_dir = select_dir()
+        #     f_list = os.listdir(save_dir)
+        #     file_name = f'{rec_name}_good_cells.csv'
+        #     # check if there already is a list of good cells
+        #     dummy = [s for s in f_list if file_name in s]
+        #     if dummy:
+        #         answer = messagebox.askyesno(title='Overwrite', message='Overwrite ?')
+        #     else:
+        #         answer = True
+        #     if answer:
+        #         good_cells_df = pd.DataFrame()
+        #         good_cells_df['roi'] = np.arange(1, len(f_rois) + 1, 1)
+        #         good_cells_df['quality'] = self.good_cells_list
+        #         good_cells_df.to_csv(f'{save_dir}/{file_name}', index=False)
+        #         messagebox.showinfo(title='Good Cells', message='Successfully exported good cells')
+        #         print('GOOD CELLS EXPORTED!')
+        #     else:
+        #         print('GOOD CELLS NOT EXPORTED!')
 
     callback = Index()
 
@@ -621,17 +625,17 @@ def data_viewer(rec_name, f_raw, sig_t, ref_im, st_rec, protocol, rois_dic, good
     button_height = 0.03
     button_font_size = 6
 
-    ax_export_cells = fig.add_axes([0.2, 0.05, button_width, button_height])
-    b_export_cells = Button(ax_export_cells, 'EXPORT GOOD CELLS')
-    b_export_cells.label.set_fontsize(button_font_size)
-    b_export_cells.on_clicked(callback.export_good_cells)
-
-    ax_good_cell = fig.add_axes([0.3, 0.05, button_width, button_height])
-    b_good_cell = Button(ax_good_cell, 'BAD CELL')
-    b_good_cell.label.set_fontsize(button_font_size)
-    # b_good_cell.color('red')
-    # b_good_cell.hovercolor = 'green'
-    b_good_cell.on_clicked(callback.good_cell)
+    # ax_export_cells = fig.add_axes([0.2, 0.05, button_width, button_height])
+    # b_export_cells = Button(ax_export_cells, 'EXPORT GOOD CELLS')
+    # b_export_cells.label.set_fontsize(button_font_size)
+    # b_export_cells.on_clicked(callback.export_good_cells)
+    #
+    # ax_good_cell = fig.add_axes([0.3, 0.05, button_width, button_height])
+    # b_good_cell = Button(ax_good_cell, 'BAD CELL')
+    # b_good_cell.label.set_fontsize(button_font_size)
+    # # b_good_cell.color('red')
+    # # b_good_cell.hovercolor = 'green'
+    # b_good_cell.on_clicked(callback.good_cell)
 
     ax_next = fig.add_axes([0.5, 0.05, button_width, button_height])
     b_next = Button(ax_next, 'Next')
@@ -642,6 +646,12 @@ def data_viewer(rec_name, f_raw, sig_t, ref_im, st_rec, protocol, rois_dic, good
     b_prev = Button(ax_prev, 'Previous')
     b_prev.label.set_fontsize(button_font_size)
     b_prev.on_clicked(callback.prev)
+
+    # ax_score = fig.add_axes([0.6, 0.05, button_width, button_height])
+    # b_score = Button(ax_score, 'SELECTION')
+    # b_score.label.set_fontsize(button_font_size)
+    # b_score.on_clicked(callback.switch_to_good_cells)
+
     plt.show()
 
 
