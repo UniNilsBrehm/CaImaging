@@ -62,6 +62,9 @@ f_raw.columns = header_labels
 # Estimate frame rate
 fr_rec = uf.estimate_sampling_rate(data=f_raw, f_stimulation=stimulus, print_msg=False)
 
+# Compute Calcium Impulse Response Function (CIRF)
+cirf = uf.create_cif(fr_rec, tau=10)
+
 # Correct for too short recordings
 pad_after = 20  # in secs
 diff = stimulus['Time'].max() - protocol['Offset_Time'].max()
@@ -98,6 +101,14 @@ final_mean_score = pd.read_csv(f'{rec_dir}/{rec_name}_lm_mean_scores.csv')
 all_cells = np.load(f'{rec_dir}/{rec_name}_lm_results.npy', allow_pickle=True).item()
 score_th = 0.15
 
+# Compute Regressor for the entire stimulus trace for plotting
+binary, reg, _, _ = uf.create_binary_trace(
+    sig=f_raw, cirf=cirf, start=protocol['Onset_Time'], end=protocol['Offset_Time'],
+    fr=fr_rec, ca_delay=0, pad_before=5, pad_after=20, low=0, high=1
+)
+
+reg = reg / np.max(reg)
+
 # Select Good Data
 if show_selection:
     if good_cells_by_score_csv['roi'].shape[0] == 0:
@@ -121,5 +132,6 @@ uf.data_viewer(
     good_cells_list=good_cells_list,
     good_scores=good_cells_by_score_csv,
     scores=final_mean_score,
-    score_th=score_th
+    score_th=score_th,
+    reg_trace=reg
 )

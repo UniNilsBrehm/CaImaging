@@ -258,7 +258,8 @@ def check_directory_structure(dir_path, dir_control):
         return False
 
 
-def data_viewer(rec_name, f_raw, sig_t, ref_im, st_rec, protocol, rois_dic, good_cells_list, good_scores, scores, score_th):
+def data_viewer(rec_name, f_raw, sig_t, ref_im, st_rec, protocol, rois_dic, good_cells_list, good_scores, scores,
+                score_th, reg_trace):
     """ fraw: raw fluorescence values"""
 
     print('')
@@ -283,6 +284,7 @@ def data_viewer(rec_name, f_raw, sig_t, ref_im, st_rec, protocol, rois_dic, good
     y_lim = 1.5
     y_lim_min = -0.1
 
+    stimulus_reg = reg_trace
     reg_scores = scores
     good_scores = good_scores
     good_c = good_cells_list
@@ -324,6 +326,11 @@ def data_viewer(rec_name, f_raw, sig_t, ref_im, st_rec, protocol, rois_dic, good
     # ax[1].set_ylabel('dF/F')
     ax[1].set_ylabel('Raw Values')
     ax[1].set_ylim([y_lim_min, y_lim])
+
+    # Plot Reg Trace
+    fr_rec = estimate_sampling_rate(data=f_raw, f_stimulation=st_rec, print_msg=False)
+    t_cirf = convert_samples_to_time(stimulus_reg, fr_rec)
+    ax[1].plot(t_cirf, stimulus_reg, 'b', alpha=0.3)
 
     text_obj = ax[0].text(
         0, 0, '', fontsize=12, color=(1, 0, 0),
@@ -1125,10 +1132,10 @@ def create_binary_trace(sig, cirf, start, end, fr, ca_delay, pad_before, pad_aft
         dur = offset_samples[i] - onset_samples[i]
         check = template == dur
         if not check:
-            print('Not all Cutouts have same duration ... Will correct for that')
+            # print('Not all Cutouts have same duration ... Will correct for that')
             diff = template - dur
             offset_samples[i] = offset_samples[i] + diff
-            print(f'Diff: {diff} samples')
+            # print(f'Diff: {diff} samples')
 
     # max_dur_samples = np.array(max_dur * fr).astype('int')/
     max_dur_samples = int(len(sig))
