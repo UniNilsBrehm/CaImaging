@@ -19,6 +19,7 @@ import cv2
 import shutil
 from sklearn.linear_model import LinearRegression
 from scipy.optimize import curve_fit
+from scipy import signal as signal
 
 
 def remove_axis(f_ax, x_ticks=True, y_ticks=True, x_line=True, y_line=True, box=False):
@@ -511,12 +512,21 @@ def data_viewer(rec_name, f_raw, sig_t, ref_im, st_rec, protocol, rois_dic, good
                 self.data = filter_raw_data(f_raw_norm, win=self.filter_win, o=self.filter_order)
             else:
                 ax[1].set_ylabel('dF/F')
-                self.data, self.f_rois, self.fbs = compute_df_over_f(
+                self.data, _, _ = compute_df_over_f(
                     f_values=filter_raw_data(f_raw, win=self.filter_win, o=self.filter_order),
                     window_size=self.df_win,
                     per=self.df_per,
                     fast=True
                     )
+                # self.data, _, _ = compute_df_over_f(
+                #     f_values=f_raw,
+                #     window_size=self.df_win,
+                #     per=self.df_per,
+                #     fast=True
+                # )
+
+                # self.data = filter_raw_data(self.data, win=self.filter_win, o=self.filter_order)
+
 
         # def good_cell(self, event):
         #     if self.good_cells_list[self.ind] == 0:
@@ -591,7 +601,7 @@ def data_viewer(rec_name, f_raw, sig_t, ref_im, st_rec, protocol, rois_dic, good
         valmin=0,
         valmax=51,
         valinit=0,
-        valstep=3,
+        valstep=1,
         orientation="vertical",
         color='black'
     )
@@ -1215,3 +1225,19 @@ def apply_linear_model(xx, yy, norm_reg=True):
     # Score
     f_score = a * f_r_squared
     return f_score, f_r_squared, a
+
+
+def highpass_filter(data, rate, cutoff, order):
+    # Normalize the Cutoff Frequency
+    w = cutoff / (rate / 2)
+    sos = signal.butter(order, w, 'highpass', output='sos')
+    f_data = signal.sosfiltfilt(sos, data)
+    return f_data
+
+
+def lowpass_filter(data, rate, cutoff, order):
+    # Normalize the Cutoff Frequency
+    w = cutoff / (rate / 2)
+    sos = signal.butter(order, w, 'lowpass', output='sos')
+    f_data = signal.sosfiltfilt(sos, data)
+    return f_data

@@ -2,9 +2,13 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="10a561b9-5b3e-4740-b797-f3c7639321fb" name="Default Changelist" comment="">
+      <change afterPath="$PROJECT_DIR$/NW_CollectData_parallel.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/NW_Linear_Regression_Scoring_parallel.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/data_viewer.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/NW_CollectData.py" beforeDir="false" afterPath="$PROJECT_DIR$/NW_CollectData.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/NW_Final_Analysis.py" beforeDir="false" afterPath="$PROJECT_DIR$/NW_Final_Analysis.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/analysis_util_functions.py" beforeDir="false" afterPath="$PROJECT_DIR$/analysis_util_functions.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -83,7 +87,7 @@
       <breakpoints>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/analysis_util_functions.py</url>
-          <line>96</line>
+          <line>97</line>
           <option name="timeStamp" value="1" />
         </line-breakpoint>
       </breakpoints>
