@@ -9,7 +9,7 @@ from joblib import Parallel, delayed
 
 
 def import_f_raw(file_dir):
-    data = pd.read_csv(file_dir, decimal='.', sep='\t', header=None)
+    data = pd.read_csv(file_dir, decimal='.', sep='\t', header=None).drop(columns=0)
     header_labels = []
     for kk in range(data.shape[1]):
         header_labels.append(f'roi_{kk + 1}')
@@ -21,13 +21,19 @@ def collect_data(rec_dir):
     output_data_frame = pd.DataFrame()
     anatomy = dict.fromkeys(rec_list)
     rec_name = os.path.split(rec_dir)[1]
-    anatomy[rec_name] = pd.read_csv(f'{rec_dir}/{rec_name}_anatomy.csv')
+    # anatomy[rec_name] = pd.read_csv(f'{rec_dir}/{rec_name}_anatomy.csv')
+    anatomy[rec_name] = pd.read_csv(f'{rec_dir}/{rec_name}_selected_cells.csv', index_col=0)
     # Ignore this recording if there are no good cells (no entries in anatomy.csv)
     if anatomy[rec_name].shape[0] > 0:
         # get raw values of this recording
         f_raw = import_f_raw(f'{rec_dir}/{rec_name}_raw.txt')
         # Get only the good cells (based on LM score)
-        f_raw_selected = f_raw[anatomy[rec_name].keys()]
+        # f_raw_selected = f_raw[anatomy[rec_name].keys()]
+        try:
+            f_raw_selected = f_raw[anatomy[rec_name]['roi'].transpose().to_numpy()]
+        except:
+            print(f'ERROR in: {rec_name}')
+            print(f_raw[f_raw.keys()[1]])
 
         # Filter Raw Data
         f_raw_selected_filtered = uf.filter_raw_data(sig=f_raw_selected, win=7, o=3)
@@ -47,7 +53,7 @@ def collect_data(rec_dir):
         time_axis = uf.convert_samples_to_time(f_raw_selected, fr=fr_rec)
 
         # get protocol
-        protocol = pd.read_csv(f'{rec_dir}/{rec_name}_protocol.csv')
+        protocol = pd.read_csv(f'{rec_dir}/{rec_name}_protocol.csv', index_col=0)
 
         # get linear regression model results
         lm = np.load(f'{rec_dir}/{rec_name}_lm_results.npy', allow_pickle=True).item()
@@ -73,42 +79,49 @@ def collect_data(rec_dir):
         stimulus_used['parameter'] = np.append(step_parameters, ramp_parameters)
         stimulus_used['type'] = np.append(['Step'] * len(step_parameters), ['Ramp'] * len(ramp_parameters))
         stimulus_used['count'] = [0] * len(stimulus_used)
-        stimulus_onsets_type = ['NaN'] * len(f_raw_selected)
-        stimulus_onsets_parameter = ['NaN'] * len(f_raw_selected)
-        stimulus_offsets_type = ['NaN'] * len(f_raw_selected)
-        stimulus_offsets_parameter = ['NaN'] * len(f_raw_selected)
-        stimulus_trial = ['NaN'] * len(f_raw_selected)
-        mean_scores_rois = dict.fromkeys(f_raw_selected, ['NaN'] * len(f_raw_selected))
-        trial_scores = dict.fromkeys(f_raw_selected, ['NaN'] * len(f_raw_selected))
-        for k in range(protocol.shape[0]):
-            onset = int(protocol['Onset_Time'].iloc[k] * fr_rec)
-            offset = int(protocol['Offset_Time'].iloc[k] * fr_rec)
 
-            s_type = protocol['Stimulus'].iloc[k]
-            s_parameter = protocol['Duration'].iloc[k]
+        # stimulus_onsets_type = ['NaN'] * len(f_raw_selected)
+        stimulus_onsets_type = pd.DataFrame(np.zeros((len(f_raw_selected))) * np.nan)
+        stimulus_onsets_parameter = stimulus_onsets_type.copy()
+        stimulus_offsets_type = stimulus_onsets_type.copy()
+        stimulus_offsets_parameter = stimulus_onsets_type.copy()
+        stimulus_trial = stimulus_onsets_type.copy()
+        # stimulus_trial = pd.DataFrame(np.zeros((len(f_raw_selected))) * np.nan)
+
+        trial_scores = pd.DataFrame(
+            np.zeros((len(f_raw_selected), len(f_raw_selected.keys()))),
+            columns=f_raw_selected.keys()
+        )
+        mean_scores_rois = trial_scores.copy()
+
+        for kk in range(protocol.shape[0]):
+            onset = int(protocol['Onset_Time'].iloc[kk] * fr_rec)
+            offset = int(protocol['Offset_Time'].iloc[kk] * fr_rec)
+
+            s_type = protocol['Stimulus'].iloc[kk]
+            s_parameter = protocol['Duration'].iloc[kk]
 
             # Set trial
             idx_trial = (stimulus_used['type'] == s_type) & (stimulus_used['parameter'] == s_parameter)
             stimulus_used.loc[idx_trial, 'count'] = stimulus_used.loc[idx_trial, 'count'] + 1
 
             # Mark exact onset and offset point
-            stimulus_onsets_type[onset] = s_type
-            stimulus_onsets_parameter[onset] = s_parameter
-
-            stimulus_offsets_type[offset] = s_type
-            stimulus_offsets_parameter[offset] = s_parameter
+            stimulus_onsets_type.iloc[onset] = s_type
+            stimulus_onsets_parameter.iloc[onset] = s_parameter
+            stimulus_offsets_type.iloc[offset] = s_type
+            stimulus_offsets_parameter.iloc[offset] = s_parameter
 
             # Trial Number on Stimulus onset time
             trial = stimulus_used.loc[idx_trial, 'count'].item()
-            stimulus_trial[onset] = trial
+            stimulus_trial.iloc[onset] = trial
 
             s_name = f'{s_type}-{s_parameter}'
             for key in f_raw_selected:
-                trial_scores[key][onset] = np.round(lm[key][s_name]['score'][trial-1], 4)
-                mean_scores_rois[key][onset] = np.round(np.mean(lm[key][s_name]['score']), 4)
+                trial_scores[key].iloc[onset] = np.round(lm[key][s_name]['score'][trial-1], 5)
+                mean_scores_rois[key].iloc[onset] = np.round(np.mean(lm[key][s_name]['score'], axis=0), 5)
 
         # Now loop through all rois
-        for k, roi in enumerate(f_raw_selected):
+        for kk, roi in enumerate(f_raw_selected):
             size = len(f_raw_selected)
             roi_data = pd.DataFrame()
             roi_data['id'] = [f'{rec_name}_{roi}'] * size
@@ -118,9 +131,11 @@ def collect_data(rec_dir):
             roi_data['raw_filtered'] = f_raw_selected_filtered[roi]
             roi_data['df'] = df_f[roi]
             roi_data['z-score'] = z_scores[roi]
-            roi_data['fbs'] = fbs[k]
+            roi_data['fbs'] = fbs[kk]
             roi_data['cirf_tau'] = cirf_tau
-            roi_data['anatomy'] = [anatomy[rec_name][roi].item()] * size
+            # roi_data['anatomy'] = [anatomy[rec_name][roi].item()] * size
+            idx_anatomy = anatomy[rec_name]['roi'] == roi
+            roi_data['anatomy'] = [anatomy[rec_name]['anatomy'][idx_anatomy].item()] * size
             roi_data['time'] = time_axis
             roi_data['stimulus_onset_type'] = stimulus_onsets_type
             roi_data['stimulus_onset_parameter'] = stimulus_onsets_parameter
@@ -135,9 +150,10 @@ def collect_data(rec_dir):
             roi_data['regressor'] = reg_norm
             roi_data['fr'] = fr_rec
             roi_data['sample'] = np.linspace(1, size, size).astype('int')
-
-            output_data_frame = pd.concat([output_data_frame, roi_data])
-        return output_data_frame
+            output_data_frame = pd.concat([output_data_frame, roi_data], ignore_index=True)
+        print(f'--- {rec_name} ---')
+        return [output_data_frame, rec_name]
+    return None
 
 
 if __name__ == '__main__':
@@ -158,19 +174,29 @@ if __name__ == '__main__':
     uf.msg_box(f'INFO', 'COLLECTING DATA ... PLEASE WAIT ...', '+')
     t0 = time.perf_counter()
 
+    # for k, v in enumerate(rec_list): print(k, v)
+    # a = collect_data(rec_list[9])
+    # exit()
     # Start Parallel Loop to do all recordings in parallel
+    # result will be a list of all outputs
     result = Parallel(n_jobs=-1)(delayed(collect_data)(i) for i in rec_list)
     t1 = time.perf_counter()
 
     # Combine all recordings into one data frame
     data_frame = pd.DataFrame()
-    for r in result:
-        data_frame = pd.concat([data_frame, r])
+    recording_list = []
+    for k, r in enumerate(result):
+        if r:
+            data_frame = pd.concat([data_frame, r[0]])
+            recording_list.append(r[1])
 
     uf.msg_box('INFO', f'Collecting Data took: {np.round(t1 - t0, 2)} secs \n'
                        f'Data Frame Size: {len(data_frame):,}', '+')
 
     # Store Data Frame as csv file to HDD
     data_frame.to_csv(f'{base_dir}/data_frame_complete.csv')
+    recording_list = pd.DataFrame(recording_list, columns=['Recording'])
+    recording_list.to_csv(f'{base_dir}/recording_list.csv', columns=['Recording'])
+
     t2 = time.perf_counter()
     uf.msg_box('INFO', f'Storing Data Frame to HDD took: {np.round(t2-t1, 2)} secs', '+')

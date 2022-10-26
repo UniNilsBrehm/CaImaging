@@ -69,7 +69,7 @@ if __name__ == '__main__':
     # Load Raw F values (filtered)
     f_raw = pd.read_csv(rec_file_path, index_col=0)
     sig_data, f_rois, fbs = uf.compute_df_over_f(
-        f_values=uf.filter_raw_data(f_raw, win=17, o=3),
+        f_values=f_raw,
         window_size=0,
         per=5,
         fast=True)
