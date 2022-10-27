@@ -14,11 +14,10 @@ import time
 
 def linear_regression_scoring(file_dir):
     # SETTINGS +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    score_th = 0.15
-    cirf_tau = 10  # in secs
-    filter_window = 12  # in secs
-    filter_order = 2
+    score_th = 0.1
+    cirf_tau = 3  # in secs
     fbs_percentile = 5  # in %
+    fbs_window = 100  # in secs
     # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
     data_file_name = os.path.split(file_dir)[1]
@@ -37,16 +36,12 @@ def linear_regression_scoring(file_dir):
     protocol = pd.read_csv(f'{rec_dir}/{rec_name}_protocol.csv')
 
     # Import ROIS from Imagej
-    rois_in_ref = read_roi_zip(f'{rec_dir}/refs/{rec_name}_ROI.tif_RoiSet.zip')
+    # rois_in_ref = read_roi_zip(f'{rec_dir}/refs/{rec_name}_ROI.tif_RoiSet.zip')
 
     # Import raw fluorescence traces (rois)
     # It is important that the header is equal to the correct ROI number
     # All ROIS of the recording
-    header_labels = []
-    for k, v in enumerate(rois_in_ref):
-        header_labels.append(f'roi_{k+1}')
-    f_raw = pd.read_csv(f'{rec_dir}/{data_file_name}', decimal='.', sep='\t', index_col=0, header=None)
-    f_raw.columns = header_labels
+    f_raw = uf.import_f_raw(f'{rec_dir}/{data_file_name}')
 
     # Estimate frame rate
     fr_rec = uf.estimate_sampling_rate(data=f_raw, f_stimulation=stimulus, print_msg=False)
@@ -88,7 +83,7 @@ def linear_regression_scoring(file_dir):
     # fbs = np.percentile(f_raw, fbs_percentile, axis=0)
     # df_f = (f_raw-fbs) / fbs
     # NO Filtering, use sliding window of 100 s for computing dynamic fbs
-    df_f, _, _ = uf.compute_df_over_f(f_values=f_raw, window_size=100, per=5, fast=True)
+    df_f, _, _ = uf.compute_df_over_f(f_values=f_raw, window_size=fbs_window, per=fbs_percentile, fast=True)
 
     # Compute Calcium Impulse Response Function (CIRF)
     cirf = uf.create_cif(fr_rec, tau=cirf_tau)
@@ -162,16 +157,15 @@ def linear_regression_scoring(file_dir):
     # Store Linear Regression Results to HDD
     # load it with np.load(dir, allow_pickle).item()
     good_cells_by_score_csv = pd.DataFrame(good_cells_by_score, columns=['roi'])
-    good_cells_by_score_csv.to_csv(f'{rec_dir}/{rec_name}_lm_good_score_rois.csv')
-    np.save(f'{rec_dir}/{rec_name}_lm_results.npy', all_cells)
-    final_mean_score.to_csv(f'{rec_dir}/{rec_name}_lm_mean_scores.csv')
-
+    # good_cells_by_score_csv.to_csv(f'{rec_dir}/{rec_name}_lm_good_score_rois_test.csv')
+    # np.save(f'{rec_dir}/{rec_name}_lm_results_test.npy', all_cells)
+    # final_mean_score.to_csv(f'{rec_dir}/{rec_name}_lm_mean_scores_test.csv')
     # Create Anatomy Labels
     # check if there is already a anatomy label
-    check = [s for s in os.listdir(rec_dir) if 'anatomy' in s]
-    if not check:
-        anatomy = pd.DataFrame(columns=good_cells_by_score_csv['roi'])
-        anatomy.to_csv(f'{rec_dir}/{rec_name}_anatomy.csv')
+    # check = [s for s in os.listdir(rec_dir) if 'anatomy' in s]
+    # if not check:
+    #     anatomy = pd.DataFrame(columns=good_cells_by_score_csv['roi'])
+    #     anatomy.to_csv(f'{rec_dir}/{rec_name}_anatomy.csv')
 
 
 if __name__ == '__main__':

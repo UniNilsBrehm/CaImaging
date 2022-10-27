@@ -38,6 +38,29 @@ def cut_out_windows(f_data, f_idx, f_before_secs, f_after_secs, selected_col):
     return f_values, f_fr
 
 
+def estimate_tau_values(f_data, f_tags):
+
+    t_samples = np.arange(0, len(f_data[0]), 1)
+
+    tau_e = []
+    err_e = []
+    for re in f_data:
+        popt, pcov = estimate_tau.fit_exp(x=t_samples, y=re, full_exp=True, plot_results=False)
+        tau = popt[1]
+        p_err = np.sqrt(np.diag(pcov))
+        err_tau = p_err[1]
+        tau_e.append(tau)
+        err_e.append(err_tau)
+
+    err_e = np.array(err_e)
+    tau_e = np.array(tau_e)
+    f_idx = (err_e < 100) & (tau_e < 100)
+    err_e = err_e[f_idx]
+    tau_e = tau_e[f_idx]
+    print(f_tags)
+    print(f'tau: {np.round(np.mean(tau_e * 2), 2)} s (+- {np.round(np.mean(err_e * 2), 2)} SD), n={len(tau_e)}')
+
+
 def plot_response(f_data, f_tags, f_window, activity_measure='z-score'):
     f_idx_bool, f_idx_index = query_data_frame_to_get_index(f_data, f_tags)
 
@@ -48,74 +71,117 @@ def plot_response(f_data, f_tags, f_window, activity_measure='z-score'):
     f_cell_names = f_data.loc[f_idx_bool]['id'].unique()
 
     # Compute Mean and STD
-    # f_m = np.mean(f_responses, axis=0)
-    f_m = np.median(f_responses, axis=0)
-    # f_sem = np.std(f_responses, axis=0) / np.sqrt(len(f_m))
-    f_sem = median_abs_deviation(f_responses, axis=0)
+    f_m = np.mean(f_responses, axis=0)
+    # f_m = np.median(f_responses, axis=0)
+    f_sem = np.std(f_responses, axis=0) / np.sqrt(len(f_m))
+    # f_sem = median_abs_deviation(f_responses, axis=0)
     f_t_axis = uf.convert_samples_to_time(sig=f_m, fr=f_fr) - f_window[0]
 
     cell_group = f_tags['anatomy'][2:]
     f_stimulus = f_tags['stimulus_onset_type'][2:]
-    f_score = f_tags['score'][2:]
+    # f_score = f_tags['score'][2:]
 
     plt.figure()
     for kk in f_responses:
         plt.plot(f_t_axis, kk, 'k', lw=0.1)
 
-    plt.title(f'{cell_group}, cells={f_cell_names.shape[0]}, n={len(f_responses)}, th: {f_score}, {f_stimulus}')
+    plt.title(f'{cell_group}, cells={f_cell_names.shape[0]}, n={len(f_responses)}, {f_stimulus}')
     plt.plot(f_t_axis, f_m, 'k')
     plt.plot(f_t_axis, f_m - f_sem, 'r')
     plt.plot(f_t_axis, f_m + f_sem, 'r')
     plt.xlabel('Time [s]')
     plt.ylabel(f'{activity_measure}')
-    plt.ylim([-1, 2])
+    plt.ylim([-1, 6])
     # plt.show()
+
+
+def get_trials_for_cells(f_data, f_tags):
+    f_window = [5, 25]
+    activity_measure = 'z-score'
+    # Find entries
+    f_idx_bool, f_idx_index = query_data_frame_to_get_index(f_data, f_tags)
+    selected_data = f_data[f_idx_bool].copy()
+
+    # Get Cell IDs
+    f_cell_names = selected_data['id'].unique()
+    # Go through each cell and get the trials with scores above threshold
+    f_cell_responses = dict()
+    f_cell_means = []
+    for c_name in f_cell_names:
+        # Cut out responses
+        f_idx_cell = selected_data['id'] == c_name
+        cell_data = selected_data[f_idx_cell]
+        f_index_cell = cell_data.index
+        f_responses, f_fr = cut_out_windows(
+            f_data, f_index_cell, f_before_secs=f_window[0], f_after_secs=f_window[1], selected_col=activity_measure
+        )
+        f_cell_responses[c_name] = f_responses
+        # f_cell_means[c_name] = np.mean(f_responses, axis=0)
+        f_cell_means.append(np.mean(f_responses, axis=0))
+    return f_cell_responses, f_cell_means
+
+
+def get_cell_grand_average_score(_data):
+    # Get all cell names
+    _cell_names = _data['id'].unique()
+    grand_average_score = dict()
+    for c in _cell_names:
+        idx1 = _data['id'] == c
+        idx2 = _data['mean_score'][idx1] > 0
+        grand_average_score[c] = np.round(_data['score'].loc[idx1][idx2].mean(), 4)
+    grand_average_score = pd.Series(grand_average_score)
+    return grand_average_score
 
 
 # Select Data File
 file_dir = uf.select_file([('CSV Files', '.csv')])
-df = pd.read_csv(file_dir, index_col=0)
-embed()
-exit()
-before = 5
-after = 25
-th_score = 0.01
-
-# tags = {'stimulus_onset_type': '=="Step"', 'anatomy': '=="allg"', 'score': f'>={th_score}'}
-tags = {'anatomy': '=="allg"', 'score': f'>={th_score}'}
-
-idx_bool, idx_index = query_data_frame_to_get_index(df, tags)
-responses, fr = cut_out_windows(df, idx_index, f_before_secs=before, f_after_secs=after, selected_col='df')
-t_samples = np.arange(0, len(responses[0]), 1)
-
-tau_e = []
-err_e = []
-for re in responses:
-    popt, pcov = estimate_tau.fit_exp(x=t_samples, y=re, full_exp=True, plot_results=False)
-    tau = popt[1]
-    p_err = np.sqrt(np.diag(pcov))
-    err_tau = p_err[1]
-    tau_e.append(tau)
-    err_e.append(err_tau)
-
-err_e = np.array(err_e)
-tau_e = np.array(tau_e)
-idx = (err_e < 100) & (tau_e < 100)
-err_e = err_e[idx]
-tau_e = tau_e[idx]
-print(tags)
-print(f'tau: {np.round(np.mean(tau_e * 2), 2)} s (+- {np.round(np.mean(err_e* 2), 2)} SD), n={len(tau_e)}')
-
-# Set Tags
-
+df = pd.read_csv(file_dir, index_col=0).reset_index(drop=True)
 before = 5
 after = 25
 th_score = 0.1
-tags = {'stimulus_onset_type': '=="Ramp"', 'anatomy': '=="allg"', 'score': f'>={th_score}'}
-plot_response(f_data=df, f_tags=tags, f_window=[before, after], activity_measure='df')
+embed()
+exit()
 
-tags = {'stimulus_onset_type': '=="Step"', 'anatomy': '=="allg"', 'score': f'>={th_score}'}
-plot_response(f_data=df, f_tags=tags, f_window=[before, after], activity_measure='df')
+grand_mean_scores = get_cell_grand_average_score(df)
+idx = grand_mean_scores > th_score
+print(f'score threshold = {th_score}: {grand_mean_scores[idx].shape[0]} / {grand_mean_scores.shape[0]}')
+
+
+# # Estimate tau values for cirf
+# tags = {'anatomy': '=="allg"', 'score': f'>={th_score}'}
+# idx_bool, idx_index = query_data_frame_to_get_index(df, tags)
+# responses, fr = cut_out_windows(df, idx_index, f_before_secs=before, f_after_secs=after, selected_col='df')
+# estimate_tau_values(f_data=responses, f_tags=tags)
+
+# Get cell responses
+# tags = {'stimulus_onset_type': '=="Ramp"', 'anatomy': '=="tg"', 'mean_score': f'>={th_score}'}
+tags = {'stimulus_onset_type': '=="Step"', 'anatomy': '=="allg"'}
+
+cell_trials, cell_means = get_trials_for_cells(f_data=df, f_tags=tags)
+# sort from min to max responses
+cell_means = np.array(cell_means)
+# sort_means = np.argsort(np.max(cell_means, axis=1))
+cell_means = cell_means[sort_means]
+
+# Create Axis for Matrix Plot
+x = np.arange(0, len(cell_means[0]), 1)
+y = np.arange(1, len(cell_means)+1, 1)
+# Matrix Plot
+plt.figure()
+plt.title(f'cells: {len(y)}, {tags["stimulus_onset_type"][2:]}')
+plt.pcolormesh(x, y, cell_means)
+
+plt.show()
+
+
+exit()
+
+# Set Tags
+tags = {'stimulus_onset_type': '=="Ramp"', 'anatomy': '=="allg"'}
+plot_response(f_data=df, f_tags=tags, f_window=[before, after], activity_measure='z-score')
+
+tags = {'stimulus_onset_type': '=="Step"', 'anatomy': '=="allg"'}
+plot_response(f_data=df, f_tags=tags, f_window=[before, after], activity_measure='z-score')
 plt.show()
 
 exit()

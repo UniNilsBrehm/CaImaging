@@ -1241,3 +1241,12 @@ def lowpass_filter(data, rate, cutoff, order):
     sos = signal.butter(order, w, 'lowpass', output='sos')
     f_data = signal.sosfiltfilt(sos, data)
     return f_data
+
+
+def import_f_raw(file_dir):
+    data = pd.read_csv(file_dir, decimal='.', sep='\t', header=None).drop(columns=0)
+    header_labels = []
+    for kk in range(data.shape[1]):
+        header_labels.append(f'roi_{kk + 1}')
+    data.columns = header_labels
+    return data
