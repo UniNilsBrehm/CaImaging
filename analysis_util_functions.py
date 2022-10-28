@@ -937,6 +937,7 @@ def draw_rois_zipped(img, rois_dic, active_roi, r_color, alp, thickness=1):
 
     if dict_depth(rois_dic) == 1:
         print('SINGLE ROI')
+        roi_type = rois_dic['type']
         # convert top, left to center coordinates
         x_coordinate_centered = rois_dic['left'] + rois_dic['width'] // 2
         y_coordinate_centered = rois_dic['top'] + rois_dic['height'] // 2
@@ -960,46 +961,80 @@ def draw_rois_zipped(img, rois_dic, active_roi, r_color, alp, thickness=1):
     else:
         for key in rois_dic:
             if key != active_roi['name']:  # ignore active roi
-                # convert top, left to center coordinates
-                x_coordinate_centered = rois_dic[key]['left'] + rois_dic[key]['width']//2
-                y_coordinate_centered = rois_dic[key]['top'] + rois_dic[key]['height']//2
-                center_coordinates = (x_coordinate_centered, y_coordinate_centered)
+                # get roi shape type
+                roi_type = rois_dic[key]['type']
+                if roi_type == 'freehand':
+                    x_vals = np.array(rois_dic[key]['x']).astype('int')
+                    y_vals = np.array(rois_dic[key]['y']).astype('int')
+                    for kk in range(len(x_vals)-1):
+                        cv2.line(overlay, (x_vals[kk], y_vals[kk]), (x_vals[kk+1], y_vals[kk+1]),
+                                 r_color, thickness, lineType=cv2.LINE_AA)
+                elif roi_type == 'rectangle':
+                    x_start_pos = int(rois_dic[key]['left'])
+                    y_start_pos = int(rois_dic[key]['top'])
+                    x_end_pos = x_start_pos + int(rois_dic[key]['width'])
+                    y_end_pos = y_start_pos + int(rois_dic[key]['height'])
+                    cv2.rectangle(overlay, (x_start_pos, y_start_pos), (x_end_pos, y_end_pos), r_color, thickness)
 
-                # Convert total to half-width for plotting ellipse
-                axes_length = (rois_dic[key]['width'] // 2, rois_dic[key]['height'] // 2)
+                else:
+                    # convert top, left to center coordinates
+                    x_coordinate_centered = int(rois_dic[key]['left'] + rois_dic[key]['width']//2)
+                    y_coordinate_centered = int(rois_dic[key]['top'] + rois_dic[key]['height']//2)
+                    center_coordinates = (x_coordinate_centered, y_coordinate_centered)
 
-                # Set rest of the parameters for ellipse
-                angle = 0
-                start_angle = 0
-                end_angle = 360
+                    # Convert total to half-width for plotting ellipse
+                    axes_length = (int(rois_dic[key]['width'] // 2), int(rois_dic[key]['height'] // 2))
 
-                # Using cv2.ellipse() method
-                # Draw a ellipse with line borders
-                cv2.ellipse(overlay, center_coordinates, axes_length,
-                            angle, start_angle, end_angle, r_color, thickness)
+                    # Set rest of the parameters for ellipse
+                    angle = 0
+                    start_angle = 0
+                    end_angle = 360
+                    # Using cv2.ellipse() method
+                    # Draw a ellipse with line borders
+                    cv2.ellipse(overlay, center_coordinates, axes_length,
+                                angle, start_angle, end_angle, r_color, thickness)
 
     # ACTIVE ROI
     # convert top, left to center coordinates
-    x_coordinate_centered = active_roi['left'] + active_roi['width'] // 2
-    y_coordinate_centered = active_roi['top'] + active_roi['height'] // 2
-    center_coordinates = (x_coordinate_centered, y_coordinate_centered)
+    active_roi_type = active_roi['type']
+    if active_roi_type == 'freehand':
+        x_vals = np.array(active_roi['x']).astype('int')
+        y_vals = np.array(active_roi['y']).astype('int')
+        r_color = (255, 0, 0)
+        for kk in range(len(x_vals) - 1):
+            cv2.line(overlay, (x_vals[kk], y_vals[kk]), (x_vals[kk + 1], y_vals[kk + 1]),
+                     r_color, thickness, lineType=cv2.LINE_AA)
+        cv2.addWeighted(overlay, alp, image_out, 1 - alp, 0, image_out)
+    elif active_roi_type == 'rectangle':
+        x_start_pos = int(active_roi['left'])
+        y_start_pos = int( active_roi['top'])
+        x_end_pos = x_start_pos + int(active_roi['width'])
+        y_end_pos = y_start_pos + int(active_roi['height'])
+        r_color = (255, 0, 0)
+        cv2.rectangle(overlay, (x_start_pos, y_start_pos), (x_end_pos, y_end_pos), r_color, thickness)
+        # add overlays to image
+        cv2.addWeighted(overlay, alp, image_out, 1 - alp, 0, image_out)
+    else:
+        x_coordinate_centered = active_roi['left'] + active_roi['width'] // 2
+        y_coordinate_centered = active_roi['top'] + active_roi['height'] // 2
+        center_coordinates = (x_coordinate_centered, y_coordinate_centered)
 
-    # Convert total to half-width for plotting ellipse
-    axes_length = (active_roi['width'] // 2, active_roi['height'] // 2)
+        # Convert total to half-width for plotting ellipse
+        axes_length = (active_roi['width'] // 2, active_roi['height'] // 2)
 
-    # Set rest of the parameters for ellipse
-    angle = 0
-    start_angle = 0
-    end_angle = 360
+        # Set rest of the parameters for ellipse
+        angle = 0
+        start_angle = 0
+        end_angle = 360
 
-    # Using cv2.ellipse() method
-    # Draw a ellipse with line borders
-    r_color = (255, 0, 0)
-    cv2.ellipse(overlay, center_coordinates, axes_length,
-                angle, start_angle, end_angle, r_color, thickness)
+        # Using cv2.ellipse() method
+        # Draw a ellipse with line borders
+        r_color = (255, 0, 0)
+        cv2.ellipse(overlay, center_coordinates, axes_length,
+                    angle, start_angle, end_angle, r_color, thickness)
 
-    # add ellipse overlays to image
-    cv2.addWeighted(overlay, alp, image_out, 1 - alp, 0, image_out)
+        # add ellipse overlays to image
+        cv2.addWeighted(overlay, alp, image_out, 1 - alp, 0, image_out)
 
     return image_out
 
