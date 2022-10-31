@@ -13,13 +13,45 @@ import analysis_util_functions as uf
 import pandas as pd
 from read_roi import read_roi_zip
 import matplotlib.backends.backend_tkagg as mptk  # import the matplotlib tk backend
+import time
+import csv
 
 
-def import_f_raw(file_dir, change_header):
-    if change_header:
-        data = pd.read_csv(file_dir, decimal='.', sep='\t', header=None).drop(columns=0)
-    else:
-        data = pd.read_csv(file_dir, decimal='.', sep='\t', header=0, index_col=0)
+def import_stimulation_file(file_dir):
+    # Check for header and delimiter
+    with open(file_dir) as csv_file:
+        some_lines = csv_file.read(512)
+        dialect = csv.Sniffer().sniff(some_lines)
+        delimiter = dialect.delimiter
+
+    # Load data and assume the first row is the header
+    data = pd.read_csv(file_dir, decimal='.', sep=delimiter, header=0)
+    # Chek for correct header
+    try:
+        a = float(data.keys()[0])  # this means no headers in the file
+        data = pd.read_csv(file_dir, decimal='.', sep=delimiter, header=None)
+        data.columns = ['Time', 'Volt']
+        return data
+    except ValueError:
+        data = data.drop(data.columns[0], axis=1)
+        return data
+
+
+def import_f_raw(file_dir):
+    # Check for header and delimiter
+    with open(file_dir) as csv_file:
+        dialect = csv.Sniffer().sniff(csv_file.read(32))
+        delimiter = dialect.delimiter
+
+    # Load data and assume the first row is the header
+    data = pd.read_csv(file_dir, decimal='.', sep=delimiter, header=0, index_col=0).reset_index(drop=True)
+    # Chek for correct header
+    try:
+        a = float(data.keys()[0])
+        data = pd.read_csv(file_dir, decimal='.', sep=delimiter, header=None)
+    except ValueError:
+        a = 0
+
     header_labels = []
     for kk in range(data.shape[1]):
         header_labels.append(f'roi_{kk + 1}')
@@ -27,10 +59,25 @@ def import_f_raw(file_dir, change_header):
     return data
 
 
-class DrawFig:
+def import_f_raw2(file_dir, change_header):
+    if change_header:
+        # data = pd.read_csv(file_dir, decimal='.', sep='\t', header=None).drop(columns=0)
+        data = pd.read_csv(file_dir, decimal='.', sep=None, engine="python", header=None).drop(columns=0)
+    else:
+        # data = pd.read_csv(file_dir, decimal='.', sep='\t', header=0, index_col=0)
+        data = pd.read_csv(file_dir, decimal='.', sep=None, engine="python", header=0, index_col=0)
+    header_labels = []
+    for kk in range(data.shape[1]):
+        header_labels.append(f'roi_{kk + 1}')
+    data.columns = header_labels
+    return data
 
-    def __init__(self, data, stimulus, fr_data, fr_stimulus, ref_img, rois_draw):
+
+class DataViewer:
+
+    def __init__(self, data_path, data, stimulus, fr_data, fr_stimulus, ref_img, rois_draw):
         # Get Input Variables
+        self.data_path = data_path
         self.rois_draw = rois_draw
         # self.ref_img = np.invert(ref_img)
         self.ref_img = ref_img
@@ -47,10 +94,10 @@ class DrawFig:
         # Compute Delta F over F
         self.fbs = np.percentile(self.raw_data, 5, axis=0)
         self.data = (self.raw_data - self.fbs) / self.fbs
-        self.stimulus_norm = (self.stimulus / np.max(self.stimulus)) * np.max(self.data.max())
 
         self.root = tkinter.Tk()
-        self.root.wm_title("SIMPLE DATA VIEWER")
+        self.window_title = os.path.split(self.data_path)[1]
+        self.root.wm_title(self.window_title)
         # Set Window to Full Screen
         self.root.state('zoomed')
 
@@ -72,8 +119,11 @@ class DrawFig:
 
         # Plot Response and Stimulus Traces
         self.data_to_plot, = self.ax_trace.plot(self.time_data, self.data[self.rois[self.id]], 'k')
-        self.stimulus_to_plot, = self.ax_trace.plot(self.time_stimulus, self.stimulus_norm, 'b', alpha=0.25)
+        if not self.stimulus.empty:
+            self.stimulus_norm = (self.stimulus / np.max(self.stimulus)) * np.max(self.data.max())
+            self.stimulus_to_plot, = self.ax_trace.plot(self.time_stimulus, self.stimulus_norm, 'b', alpha=0.25)
         self.ax_trace.set_title(f'roi: {self.rois[self.id]}')
+        self.ax_trace.set_ylim([-0.5, np.max(self.data.max())])
         # FIGURE END
 
         # Add Menu
@@ -208,22 +258,33 @@ if __name__ == "__main__":
     rec_name = os.path.split(rec_dir)[1]
     uf.msg_box(rec_name, f'SELECTED RECORDING: {rec_name}', '+')
 
-    # Get Stimulus
-    stimulation = uf.import_txt_stimulation_file(data_path=rec_dir, data_name=f'{rec_name}_stimulation.txt')
-    if stimulation['Volt'].max() <= 2:
-        stimulation['Volt'] = stimulation['Volt'] * -1
-    # Get Raw Values
-    f_raw = import_f_raw(f'{rec_dir}/{rec_name}_raw.txt', change_header=False)
-    fr_rec = uf.estimate_sampling_rate(data=f_raw, f_stimulation=stimulation, print_msg=False)
     # Import Reference Image
     img_ref = plt.imread(f'{rec_dir}/{rec_name}_ref.tif', format='tif')
     # Import ROIS from Imagej
     rois_in_ref = read_roi_zip(f'{rec_dir}/{rec_name}_RoiSet.zip')
 
+    # Import Raw Values
+    f_raw = import_f_raw(f'{rec_dir}/{rec_name}_raw.txt')
+
+    # From Resolution ---> Frame Rate
+    file_list = os.listdir(rec_dir)
+    stimulation_file = [s for s in file_list if 'stimulation' in s]
+    if stimulation_file:
+        # Get Stimulus
+        stimulation = import_stimulation_file(f'{rec_dir}/{rec_name}_stimulation.txt')
+        if stimulation['Volt'].max() <= 2:
+            stimulation['Volt'] = stimulation['Volt'] * -1
+        # Get Raw Values
+        fr_rec = uf.estimate_sampling_rate(data=f_raw, f_stimulation=stimulation, print_msg=False)
+        stimulation_trace = stimulation['Volt']
+    else:
+        stimulation_trace = pd.DataFrame()
+        fr_rec = uf.pixel_resolution_to_frame_rate(img_ref.shape[0])
     # Start Data Viewer
-    app = DrawFig(
+    app = DataViewer(
+        data_path=rec_dir,
         data=f_raw,
-        stimulus=stimulation['Volt'],
+        stimulus=stimulation_trace,
         fr_data=fr_rec,
         fr_stimulus=1000,
         ref_img=img_ref,

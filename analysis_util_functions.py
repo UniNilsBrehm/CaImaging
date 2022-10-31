@@ -120,15 +120,25 @@ def import_csv_file(data_path, data_name):
     return out
 
 
-def import_txt_stimulation_file(data_path, data_name, float_dec='.', sep_symbol='\s+'):
+def import_txt_stimulation_file(data_path, data_name, float_dec='.', sep_symbol='auto', header=False):
     """ imports stimulation text file from MOM 2P Imaging Setup """
-
+    # examples: '\s+ or '\t' or ','
     if not data_name.endswith('.txt'):
         data_name = f'{data_name}.txt'
-    if data_path.endswith('/'):
-        out = pd.read_csv(f'{data_path}{data_name}', sep=sep_symbol, decimal=float_dec, header=None, names=['Time', 'Volt'])
+    if not data_path.endswith('/'):
+        data_path = data_path + '/'
+
+    if sep_symbol == 'auto':
+        if header:
+            out = pd.read_csv(f'{data_path}{data_name}', sep=None, engine="python", decimal=float_dec)
+        else:
+            out = pd.read_csv(f'{data_path}{data_name}', sep=None, engine="python", decimal=float_dec, header=None,
+                          names=['Time', 'Volt'])
     else:
-        out = pd.read_csv(f'{data_path}/{data_name}', sep=sep_symbol, decimal=float_dec, header=None, names=['Time', 'Volt'])
+        if header:
+            out = pd.read_csv(f'{data_path}{data_name}', sep=sep_symbol, decimal=float_dec)
+        else:
+            out = pd.read_csv(f'{data_path}{data_name}', sep=sep_symbol, decimal=float_dec, header=None, names=['Time', 'Volt'])
     return out
 
 
@@ -1285,3 +1295,15 @@ def import_f_raw(file_dir):
         header_labels.append(f'roi_{kk + 1}')
     data.columns = header_labels
     return data
+
+
+def pixel_resolution_to_frame_rate(resolution):
+    # image is assumed to be square in size and resolution a power of 2
+    resolution = int(resolution)
+    res_table = {512: 2.0345147125756804, 256: 2.0345147125756804*4, 1024: 2.0345147125756804 / 4}
+    try:
+        out = res_table[resolution]
+        return out
+    except KeyError:
+        out = None
+        print(f'ERROR: INVALID RESOLUTION VALUE')
