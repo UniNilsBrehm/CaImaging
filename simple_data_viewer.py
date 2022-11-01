@@ -122,7 +122,7 @@ class DataViewer:
         if not self.stimulus.empty:
             self.stimulus_norm = (self.stimulus / np.max(self.stimulus)) * np.max(self.data.max())
             self.stimulus_to_plot, = self.ax_trace.plot(self.time_stimulus, self.stimulus_norm, 'b', alpha=0.25)
-        self.ax_trace.set_title(f'roi: {self.rois[self.id]}')
+        self.title_obj = self.ax_trace.set_title(f'roi: {self.rois[self.id]} / {len(self.rois)}')
         self.ax_trace.set_ylim([-0.5, np.max(self.data.max())])
         # FIGURE END
 
@@ -174,7 +174,7 @@ class DataViewer:
                                 self.rois_draw[active_roi]['top'] + self.rois_draw[active_roi]['height'] // 2))
             self.roi_images.append(uf.draw_rois_zipped(
                 img=self.ref_img, rois_dic=self.rois_draw, active_roi=self.rois_draw[active_roi],
-                r_color=(0, 0, 255), alp=0.5, thickness=2)
+                r_color=(0, 0, 255), alp=0.5, thickness=1)
             )
 
     def _open_file(self):
@@ -223,12 +223,17 @@ class DataViewer:
 
     def _turn_page(self):
         self.data_to_plot.set_ydata(self.data[self.rois[self.id]])
-        self.ax_trace.set_title(f'roi: {self.rois[self.id]}')
+        self.title_obj = self.ax_trace.set_title(f'roi: {self.rois[self.id]} / {len(self.rois)}')
         # Update Ref Image
         self.ref_img_obj.set_data(self.roi_images[self.id])
         # Update Ref Image Label
         self.ref_img_text.set_text(f'{self.id + 1}')
         self.ref_img_text.set_position(self.roi_pos[self.id])
+
+        if self.id == len(self.rois) - 1:
+            plt.setp(self.title_obj, color='r')
+        else:
+            plt.setp(self.title_obj, color='k')
         self.canvas.draw()
 
 

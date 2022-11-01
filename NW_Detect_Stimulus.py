@@ -1,11 +1,33 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+import os
 from tkinter.filedialog import askdirectory
 from tkinter.filedialog import askopenfilename
 from tkinter import Tk
 from IPython import embed
 import analysis_util_functions as uf
+import csv
+
+
+def import_stimulation_file(file_dir):
+    # Check for header and delimiter
+    with open(file_dir) as csv_file:
+        some_lines = csv_file.read(1024)
+        dialect = csv.Sniffer().sniff(some_lines)
+        delimiter = dialect.delimiter
+
+    # Load data and assume the first row is the header
+    data = pd.read_csv(file_dir, decimal='.', sep=delimiter, header=0)
+    # Chek for correct header
+    try:
+        a = float(data.keys()[0])  # this means no headers in the file
+        data = pd.read_csv(file_dir, decimal='.', sep=delimiter, header=None)
+        data.columns = ['Time', 'Volt']
+        return data
+    except ValueError:
+        data = data.drop(data.columns[0], axis=1)
+        return data
 
 
 def import_nw_stimulation_file(s_file_path):
@@ -130,42 +152,63 @@ def open_dir(f_select_single_file):
     return rec_path
 
 
-def detect_stimuli(s_values):
+def detect_stimuli(s_values, protocol_file=False, th_step=0.5, th_ramp=0.2, small_interval_th=0, smoothing_window=10,
+                   show_helper_figure=False, nils_wenke=False):
 
     # Import Stimulus Protocols (hardcoded dir)
     # 6 stimulus types, each repeated for 5 times (total: 30)
     protocol_path = 'E:/CaImagingAnalysis/NilsWenke/'
-    protocol_1 = pd.read_csv(f'{protocol_path}stimulus_protocol_1.csv')
-    protocol_2 = pd.read_csv(f'{protocol_path}stimulus_protocol_2.csv')
+    if protocol_file:
+        if nils_wenke:
+            protocol_1 = pd.read_csv(f'{protocol_path}stimulus_protocol_1.csv')
+            protocol_2 = pd.read_csv(f'{protocol_path}stimulus_protocol_2.csv')
+        else:
+            protocol_values = pd.read_csv('E:/CaImagingAnalysis/Paper_Data/Tapping/protocol_stimulus_values.csv')
 
     # Smooth Stimulus
-    stimulus = uf.savitzky_golay(y=s_values, window_size=3, order=1)
-    # Find Ramps and Steps in Stimulus Trace
-    th_step = 0.5
-    th_ramp = 0.2
+    # stimulus = s_values
+    # stimulus = uf.savitzky_golay(y=s_values, window_size=3, order=1)
+    stimulus = np.convolve(s_values, np.ones(smoothing_window) / smoothing_window, mode='same')
 
+    # Find Ramps and Steps in Stimulus Trace
     # Thresholding too small intervals
     # Min. distance between different stimuli in samples that is allowed!
     # This somehow corresponds to the stimulus intervals in the experiment (here: 30 secs)
     # This means it will ignore any stimulus detection x secs after the first detection! So the first must be correct!
     # I guess this could be improved... However, if 'th_step' and 'th_ramp' are set appropriately this small interval
     # thresholding should not be necessary anyways.
-    small_interval_th = 0
-
     ramp_stimulus, step_onsets, step_offsets, ramp_onsets, ramp_offsets = find_ramps_and_steps(
         s=stimulus.copy(), f_th_step=th_step, f_th_ramp=th_ramp, interval_th=small_interval_th
     )
 
-    metadata_df = pd.DataFrame()
-    # WHAT PROTOCOL HAS BEEN USED?
-    if len(step_onsets) > 10:
-        protocol = protocol_2.copy()
-        metadata_df['Protocol'] = ['Wenke Protocol Nr. 2']
-        print('It seems that protocol 2 has been used!')
-    else:
-        protocol = protocol_1.copy()
-        metadata_df['Protocol'] = ['Wenke Protocol Nr. 1']
-        print('It seems that protocol 1 has been used!')
+    if show_helper_figure:
+        fig, axs = plt.subplots(2, 1)
+        axs[0].set_title('Stimulus Diff (red) (Estimate good step threshold value)')
+        axs[0].plot(np.diff(stimulus, append=0), 'k')
+        axs[0].plot([0, len(stimulus)], [th_step, th_step], 'r--')
+        axs[1].plot(stimulus, 'k')
+        axs[1].plot(step_onsets, np.zeros(len(step_onsets)) + th_step, 'xb', markersize=10)
+        axs[1].plot(step_offsets, np.zeros(len(step_offsets)) + th_step, 'xb', markersize=10)
+        axs[1].plot(ramp_onsets, np.zeros(len(ramp_onsets)) + th_ramp, 'xg', markersize=10)
+        axs[1].plot(ramp_offsets, np.zeros(len(ramp_offsets)) + th_ramp, 'xg', markersize=10)
+        axs[1].plot([0, len(stimulus)], [th_ramp, th_ramp], 'r--')
+        axs[1].set_title('Stimulus Trace')
+        plt.show()
+
+    if protocol_file:
+        if nils_wenke:
+            metadata_df = pd.DataFrame()
+            # WHAT PROTOCOL HAS BEEN USED?
+            if len(step_onsets) > 10:
+                protocol = protocol_2.copy()
+                metadata_df['Protocol'] = ['Wenke Protocol Nr. 2']
+                print('It seems that protocol 2 has been used!')
+            else:
+                protocol = protocol_1.copy()
+                metadata_df['Protocol'] = ['Wenke Protocol Nr. 1']
+                print('It seems that protocol 1 has been used!')
+        else:
+            protocol = protocol_values
 
     # Determine ramp and step durations
     fr = 1000
@@ -175,65 +218,87 @@ def detect_stimuli(s_values):
 
     # Compare estimated Step duration values to protocol files
     # STEPS
-    protocol_steps = protocol[protocol['Stimulus'] == 'Step'].copy()
-    step_durations = compare_stimulus_duration(
-        f_protocol=protocol_steps.copy(), f_estimated_durations=estimated_step_durations
-    )
-    # RAMPS
-    # Use 'estimated_ramp_durations / 2' to match it to Nils Wenkes Terminology!
-    protocol_ramps = protocol[protocol['Stimulus'] == 'Ramp'].copy()
-    ramp_matched_durations = compare_stimulus_duration(
-        f_protocol=protocol_ramps.copy(), f_estimated_durations=estimated_ramp_durations / 2
-    )
+    if protocol_file:
+        protocol_steps = protocol[protocol['Stimulus'] == 'Step'].copy()
+        step_durations = compare_stimulus_duration(
+            f_protocol=protocol_steps.copy(), f_estimated_durations=estimated_step_durations
+        )
+        # RAMPS
+        # Use 'estimated_ramp_durations / 2' to match it to Nils Wenkes Terminology!
+        protocol_ramps = protocol[protocol['Stimulus'] == 'Ramp'].copy()
+        ramp_matched_durations = compare_stimulus_duration(
+            f_protocol=protocol_ramps.copy(), f_estimated_durations=estimated_ramp_durations / 2
+        )
 
     # Combine all info into one df
     # RAMPS
     ramps_df = pd.DataFrame()
-    ramps_df['Duration'] = ramp_matched_durations
-    ramps_df['Estimated_Duration'] = estimated_ramp_durations / 2
-    ramps_df['Onset_Sample'] = ramp_onsets
-    ramps_df['Onset_Time'] = ramp_onsets / fr
-    ramps_df['Offset_Sample'] = ramp_offsets
-    ramps_df['Offset_Time'] = ramp_onsets / fr + np.array(ramp_matched_durations) / fr
-    ramps_df['Detected_Offset_Time'] = ramp_offsets / fr
-    ramps_df['Stimulus'] = ['Ramp'] * len(ramp_matched_durations)
-    ramps_df['SamplingRate'] = [fr] * len(ramp_matched_durations)
+    if protocol_file:
+        ramps_df['Duration'] = ramp_matched_durations
+        ramps_df['Estimated_Duration'] = estimated_ramp_durations / 2
+        ramps_df['Onset_Sample'] = ramp_onsets
+        ramps_df['Onset_Time'] = ramp_onsets / fr
+        ramps_df['Offset_Sample'] = ramp_offsets
+        ramps_df['Offset_Time'] = ramp_onsets / fr + np.array(ramp_matched_durations) / fr
+        ramps_df['Detected_Offset_Time'] = ramp_offsets / fr
+        ramps_df['Stimulus'] = ['Ramp'] * len(ramp_matched_durations)
+        ramps_df['SamplingRate'] = [fr] * len(ramp_matched_durations)
+    else:
+        ramps_df['Estimated_Duration'] = estimated_ramp_durations / 2
+        ramps_df['Onset_Sample'] = ramp_onsets
+        ramps_df['Onset_Time'] = ramp_onsets / fr
+        ramps_df['Offset_Sample'] = ramp_offsets
+        ramps_df['Offset_Time'] = ramp_onsets / fr + np.array(estimated_ramp_durations) / fr
+        ramps_df['Detected_Offset_Time'] = ramp_offsets / fr
+        ramps_df['Stimulus'] = ['Ramp'] * len(estimated_ramp_durations)
+        ramps_df['SamplingRate'] = [fr] * len(estimated_ramp_durations)
 
     # STEPS
     steps_df = pd.DataFrame()
-    steps_df['Duration'] = step_durations
-    steps_df['Estimated_Duration'] = estimated_step_durations
-    steps_df['Onset_Sample'] = step_onsets
-    steps_df['Onset_Time'] = step_onsets / fr
-    steps_df['Offset_Sample'] = step_offsets
-    steps_df['Offset_Time'] = step_onsets / fr + np.array(step_durations) / fr
-    steps_df['Detected_Offset_Time'] = step_offsets / fr
-    steps_df['Stimulus'] = ['Step'] * len(step_durations)
-    steps_df['SamplingRate'] = [fr] * len(step_durations)
+    if protocol_file:
+        steps_df['Duration'] = step_durations
+        steps_df['Estimated_Duration'] = estimated_step_durations
+        steps_df['Onset_Sample'] = step_onsets
+        steps_df['Onset_Time'] = step_onsets / fr
+        steps_df['Offset_Sample'] = step_offsets
+        steps_df['Offset_Time'] = step_onsets / fr + np.array(step_durations) / fr
+        steps_df['Detected_Offset_Time'] = step_offsets / fr
+        steps_df['Stimulus'] = ['Step'] * len(step_durations)
+        steps_df['SamplingRate'] = [fr] * len(step_durations)
+    else:
+        steps_df['Estimated_Duration'] = estimated_step_durations
+        steps_df['Onset_Sample'] = step_onsets
+        steps_df['Onset_Time'] = step_onsets / fr
+        steps_df['Offset_Sample'] = step_offsets
+        steps_df['Offset_Time'] = step_onsets / fr + np.array(estimated_step_durations) / fr
+        steps_df['Detected_Offset_Time'] = step_offsets / fr
+        steps_df['Stimulus'] = ['Step'] * len(estimated_step_durations)
+        steps_df['SamplingRate'] = [fr] * len(estimated_step_durations)
 
     # COMBINED
     stimulus_protocol_unsorted = pd.concat([ramps_df, steps_df])
     stimulus_protocol = stimulus_protocol_unsorted.copy().sort_values(by=['Onset_Time']).reset_index(drop=True)
 
     # Test Detection
-    stim_count = 0
-    total_presentations = 0
-    for k in protocol_ramps['Duration']:
-        d = stimulus_protocol['Duration'][stimulus_protocol['Stimulus'] == 'Ramp']
-        c = np.sum(d == k)
-        total_presentations += c
-        stim_count += 1
-        print(f'FOUND: {c} x {k} ms Ramps')
+    if protocol_file:
+        stim_count = 0
+        total_presentations = 0
+        for k in protocol_ramps['Duration']:
+            d = stimulus_protocol['Duration'][stimulus_protocol['Stimulus'] == 'Ramp']
+            c = np.sum(d == k)
+            total_presentations += c
+            stim_count += 1
+            print(f'FOUND: {c} x {k} ms Ramps')
 
-    for k in protocol_steps['Duration']:
-        d = stimulus_protocol['Duration'][stimulus_protocol['Stimulus'] == 'Step']
-        c = np.sum(d == k)
-        total_presentations += c
-        stim_count += 1
-        print(f'FOUND: {c} x {k} ms Steps')
-    print('----------')
-    print(f'IN TOTAL: {stim_count} Stimulus Types ({len(protocol)} in protocol file)')
-    print(f'IN TOTAL: {total_presentations} Events (Stimulus Presentations)')
+        for k in protocol_steps['Duration']:
+            d = stimulus_protocol['Duration'][stimulus_protocol['Stimulus'] == 'Step']
+            c = np.sum(d == k)
+            total_presentations += c
+            stim_count += 1
+            print(f'FOUND: {c} x {k} ms Steps')
+        print('----------')
+        print(f'IN TOTAL: {stim_count} Stimulus Types ({len(protocol)} in protocol file)')
+        print(f'IN TOTAL: {total_presentations} Events (Stimulus Presentations)')
 
     # STORE EVERYTHING TO DATAFRAME
     stimulus_final = pd.DataFrame()
@@ -251,5 +316,17 @@ def export_stimulus_file(s_file, s_protocol, export_protocol_name, export_stimul
 
 
 if __name__ == '__main__':
-    select_single_file = False
-    rec_dir = open_dir(select_single_file)
+    select_single_file = True
+    file_name = open_dir(select_single_file)
+    # Import stimulation file
+    # stimulation_file = pd.read_csv(f'{file_name}', sep=',', index_col=0)
+    stimulation_file = import_stimulation_file(file_dir=file_name)
+
+    # Detect Stimulus from voltage trace
+    stimulation, protocol = detect_stimuli(
+        s_values=stimulation_file['Volt'].to_numpy(), protocol_file=True,
+        th_step=0.1, th_ramp=0.2, small_interval_th=0, smoothing_window=10, show_helper_figure=False, nils_wenke=False)
+    stimulation.to_csv(f'{os.path.split(file_name)[0]}/stimulation.txt')
+    protocol.to_csv(f'{os.path.split(file_name)[0]}/protocol.csv')
+    uf.msg_box('INFO', 'STORED DETECTED PROTOCOL AND STIMULUS TO HDD', sep='+')
+

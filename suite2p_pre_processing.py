@@ -7,9 +7,10 @@ from tkinter.filedialog import askdirectory
 from tkinter import Tk
 import analysis_util_functions as uf
 import pandas as pd
+import sys
 
 
-def suite2p_registering(rec_path):
+def suite2p_registering(rec_path, f_batch_size=300):
     # How to load and read ops.npy files:
     #  np.load(p, allow_pickle=True).item()
     print('')
@@ -77,14 +78,14 @@ def suite2p_registering(rec_path):
     ops['tau'] = 1.25
     ops['fs'] = 2
     ops['nimg_init'] = 300  # (int, default: 200) how many frames to use to compute reference image for registration
-    ops['batch_size'] = 300  # (int, default: 200) how many frames to register simultaneously in each batch. This depends
-    # on memory constraints - it will be faster to run if the batch is larger, but it will require more RAM.
+    ops['batch_size'] = f_batch_size  # (int, default: 200) how many frames to register simultaneously in each batch.
+    # Depends on memory constraints - it will be faster to run if the batch is larger, but it will require more RAM.
 
     ops['reg_tif'] = True  # store reg movie as tiff file
     ops['nonrigid'] = non_rigid  # (bool, default: True) whether or not to perform non-rigid registration,
     # which splits the field of view into blocks and computes registration offset in each block separately.
 
-    ops['block_size'] = [128, 128]  # (two ints, default: [128,128]) size of blocks for non-rigid registration, in pixels.
+    ops['block_size'] = [128, 128]  # (two ints, default: [128,128]) size of blocks for non-rigid reg, in pixels.
     # HIGHLY recommend keeping this a power of 2 and/or 3 (e.g. 128, 256, 384, etc) for efficient fft
 
     ops['roidetect'] = False  # (bool, default: True) whether or not to run ROI detect and extraction
@@ -138,7 +139,16 @@ def suite2p_registering(rec_path):
 
 
 if __name__ == '__main__':
+    if len(sys.argv) > 1:
+        command = sys.argv[1]
+        if command.startswith('-'):
+            batch_size = int(command[1:])
+        else:
+            print('WRONG PARAMETER ... WIlL IGNORE IT')
+            batch_size = 300
+    else:
+        batch_size = 300
     uf.msg_box('SUITE2P REGISTRATION', 'Please select directory containing one recording (tif) file', '+')
     Tk().withdraw()  # we don't want a full GUI, so keep the root window from appearing
     rec_dir = askdirectory()
-    suite2p_registering(rec_path=rec_dir)
+    suite2p_registering(rec_path=rec_dir, f_batch_size=batch_size)

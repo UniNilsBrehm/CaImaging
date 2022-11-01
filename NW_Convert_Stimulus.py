@@ -48,6 +48,8 @@ for rec_nr, v in enumerate(stimulus_list):
     # Detect Stimulus from voltage trace
     stimulus, protocol = detect_stimulation.detect_stimuli(s_values=stimulus_converted)
     # Export it to HDD
+    embed()
+    exit()
     detect_stimulation.export_stimulus_file(
         s_file=stimulus,
         s_protocol=protocol,
