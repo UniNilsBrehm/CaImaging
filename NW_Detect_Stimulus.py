@@ -8,6 +8,7 @@ from tkinter import Tk
 from IPython import embed
 import analysis_util_functions as uf
 import csv
+import sys
 
 
 def import_stimulation_file(file_dir):
@@ -18,12 +19,15 @@ def import_stimulation_file(file_dir):
         delimiter = dialect.delimiter
 
     # Load data and assume the first row is the header
-    data = pd.read_csv(file_dir, decimal='.', sep=delimiter, header=0)
+    data = pd.read_csv(file_dir, decimal='.', sep=delimiter, header=0, index_col=0)
     # Chek for correct header
+    embed()
+    exit()
     try:
         a = float(data.keys()[0])  # this means no headers in the file
-        data = pd.read_csv(file_dir, decimal='.', sep=delimiter, header=None)
+        data = pd.read_csv(file_dir, decimal='.', sep=delimiter, header=None, index_col=0)
         data.columns = ['Time', 'Volt']
+        data = data.reset_index(drop=True)
         return data
     except ValueError:
         data = data.drop(data.columns[0], axis=1)
@@ -153,7 +157,7 @@ def open_dir(f_select_single_file):
 
 
 def detect_stimuli(s_values, protocol_file=False, th_step=0.5, th_ramp=0.2, small_interval_th=0, smoothing_window=10,
-                   show_helper_figure=False, nils_wenke=False):
+                   show_helper_figure=False, nils_wenke=False, protocol_values=0):
 
     # Import Stimulus Protocols (hardcoded dir)
     # 6 stimulus types, each repeated for 5 times (total: 30)
@@ -163,8 +167,8 @@ def detect_stimuli(s_values, protocol_file=False, th_step=0.5, th_ramp=0.2, smal
             protocol_1 = pd.read_csv(f'{protocol_path}stimulus_protocol_1.csv')
             protocol_2 = pd.read_csv(f'{protocol_path}stimulus_protocol_2.csv')
         else:
-            protocol_values = pd.read_csv('E:/CaImagingAnalysis/Paper_Data/Tapping/protocol_stimulus_values.csv')
-
+            # protocol_values = pd.read_csv('E:/CaImagingAnalysis/Paper_Data/Tapping/protocol_stimulus_values.csv')
+            protocol_values = protocol_values
     # Smooth Stimulus
     # stimulus = s_values
     # stimulus = uf.savitzky_golay(y=s_values, window_size=3, order=1)
@@ -315,18 +319,59 @@ def export_stimulus_file(s_file, s_protocol, export_protocol_name, export_stimul
     s_file.to_csv(export_stimulus_name, sep='\t', decimal='.', header=None)
 
 
+# MAIN SCRIPT ----------------------------------------------------------------------------------------------------------
 if __name__ == '__main__':
+    if len(sys.argv) > 1:
+        command = sys.argv[1]
+        if command == '-estimate':
+            estimate_round = True
+            uf.msg_box('INFO', 'STARTING ESTIMATE MODE', '+')
+        elif command == '-detect':
+            estimate_round = False
+            uf.msg_box('INFO', 'STARTING DETECTION MODE', '+')
+        else:
+            uf.msg_box('ERROR', 'INVALID ARGUMENT \n USE: -estimate or -detect', '+')
+            exit()
+    else:
+        estimate_round = False
+        uf.msg_box('ERROR', 'NO ARGUMENT WAS GIVEN \n USE: -estimate or -detect', '+')
+        exit()
+
     select_single_file = True
     file_name = open_dir(select_single_file)
+    file_dir = os.path.split(file_name)[0]
+    rec_name = os.path.split(file_dir)[1]
     # Import stimulation file
-    # stimulation_file = pd.read_csv(f'{file_name}', sep=',', index_col=0)
-    stimulation_file = import_stimulation_file(file_dir=file_name)
+    stimulation_file = pd.read_csv(f'{file_dir}/{rec_name}_stimulation.txt')
+    # used_protocol_values = pd.read_csv('E:/CaImagingAnalysis/Paper_Data/Tapping/protocol_stimulus_values.csv')
+    used_protocol_values = pd.read_csv(f'{file_dir}/protocol_stimulus_values.csv')
+    # Import raw data
+    f_raw = uf.import_f_raw(f'{file_dir}/{rec_name}_raw.txt')
+
+    # Estimate Frame Rate
+    # fr_rec = uf.estimate_sampling_rate(data=f_raw, f_stimulation=stimulation_file, print_msg=False)
+    # Check if Recording has already been extended
+    file_list = [s for s in os.listdir(file_dir) if 'RECORDING_WAS_EXTENDED' in s]
+    if len(file_list) > 0:
+        uf.msg_box('INFO', 'Recording is the extended version', '-')
+    else:
+        uf.msg_box('WARNING', 'Recording seems to be not extended? Are You Sure to proceed?', '-')
 
     # Detect Stimulus from voltage trace
     stimulation, protocol = detect_stimuli(
         s_values=stimulation_file['Volt'].to_numpy(), protocol_file=True,
-        th_step=0.1, th_ramp=0.2, small_interval_th=0, smoothing_window=10, show_helper_figure=False, nils_wenke=False)
-    stimulation.to_csv(f'{os.path.split(file_name)[0]}/stimulation.txt')
-    protocol.to_csv(f'{os.path.split(file_name)[0]}/protocol.csv')
-    uf.msg_box('INFO', 'STORED DETECTED PROTOCOL AND STIMULUS TO HDD', sep='+')
+        th_step=0.1, th_ramp=0.2, small_interval_th=0, smoothing_window=10, show_helper_figure=estimate_round,
+        nils_wenke=False, protocol_values=used_protocol_values)
+
+    if estimate_round:
+        print(protocol[protocol['Stimulus'] == 'Step'])
+        print('')
+        print(protocol[protocol['Stimulus'] == 'Ramp'])
+        print('')
+        print('INTERVALS:')
+        print(protocol['Onset_Time'].diff().to_numpy())
+    else:
+        stimulation.to_csv(f'{file_dir}/{rec_name}_stimulation_filtered.txt')
+        protocol.to_csv(f'{file_dir}/{rec_name}_protocol.csv')
+        uf.msg_box('INFO', 'STORED DETECTED PROTOCOL AND STIMULUS TO HDD', sep='+')
 

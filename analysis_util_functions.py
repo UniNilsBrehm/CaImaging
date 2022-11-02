@@ -20,6 +20,7 @@ import shutil
 from sklearn.linear_model import LinearRegression
 from scipy.optimize import curve_fit
 from scipy import signal as signal
+import csv
 
 
 def remove_axis(f_ax, x_ticks=True, y_ticks=True, x_line=True, y_line=True, box=False):
@@ -1219,8 +1220,6 @@ def create_binary_trace(sig, cirf, start, end, fr, ca_delay, pad_before, pad_aft
     onset_samples = onset_samples - int(pad_before * fr)
     offset_samples = offset_samples + int(pad_after * fr)
 
-
-
     # if offset_samples[-1] >= max_dur_samples:
     #   offset_samples[-1] = max_dur_samples
     #   print('Last Cutout exceeded stimulus duration and cutout was corrected for that!')
@@ -1252,17 +1251,23 @@ def apply_linear_model(xx, yy, norm_reg=True):
         f_y = yy
 
     # Check dimensions of reg
+    if xx.shape[0] == 0:
+        print('ERROR: Wrong x input')
+        return 0, 0, 0
+    if yy.shape[0] == 0:
+        print('ERROR: Wrong y input')
+        return 0, 0, 0
+
     if len(xx.shape) == 1:
         reg_xx = xx.reshape(-1, 1)
     elif len(xx.shape) == 2:
         reg_xx = xx
     else:
         print('ERROR: Wrong x input')
-        return False
+        return 0, 0, 0
 
     # Linear Regression
     l_model = LinearRegression().fit(reg_xx, f_y)
-
     # Slope (y = a * x + c)
     a = l_model.coef_[0]
     # R**2 of model
@@ -1288,13 +1293,13 @@ def lowpass_filter(data, rate, cutoff, order):
     return f_data
 
 
-def import_f_raw(file_dir):
-    data = pd.read_csv(file_dir, decimal='.', sep='\t', header=None).drop(columns=0)
-    header_labels = []
-    for kk in range(data.shape[1]):
-        header_labels.append(f'roi_{kk + 1}')
-    data.columns = header_labels
-    return data
+# def import_f_raw(file_dir):
+#     data = pd.read_csv(file_dir, decimal='.', sep='\t', header=None).drop(columns=0)
+#     header_labels = []
+#     for kk in range(data.shape[1]):
+#         header_labels.append(f'roi_{kk + 1}')
+#     data.columns = header_labels
+#     return data
 
 
 def pixel_resolution_to_frame_rate(resolution):
@@ -1307,3 +1312,45 @@ def pixel_resolution_to_frame_rate(resolution):
     except KeyError:
         out = None
         print(f'ERROR: INVALID RESOLUTION VALUE')
+
+
+def import_stimulation_file(file_dir):
+    # Check for header and delimiter
+    with open(file_dir) as csv_file:
+        some_lines = csv_file.read(512)
+        dialect = csv.Sniffer().sniff(some_lines)
+        delimiter = dialect.delimiter
+
+    # Load data and assume the first row is the header
+    data = pd.read_csv(file_dir, decimal='.', sep=delimiter, header=0)
+    # Chek for correct header
+    try:
+        a = float(data.keys()[0])  # this means no headers in the file
+        data = pd.read_csv(file_dir, decimal='.', sep=delimiter, header=None)
+        data.columns = ['Time', 'Volt']
+        return data
+    except ValueError:
+        data = data.drop(data.columns[0], axis=1)
+        return data
+
+
+def import_f_raw(file_dir):
+    # Check for header and delimiter
+    with open(file_dir) as csv_file:
+        dialect = csv.Sniffer().sniff(csv_file.read(32))
+        delimiter = dialect.delimiter
+
+    # Load data and assume the first row is the header
+    data = pd.read_csv(file_dir, decimal='.', sep=delimiter, header=0, index_col=0).reset_index(drop=True)
+    # Chek for correct header
+    try:
+        a = float(data.keys()[0])
+        data = pd.read_csv(file_dir, decimal='.', sep=delimiter, header=None)
+    except ValueError:
+        a = 0
+
+    header_labels = []
+    for kk in range(data.shape[1]):
+        header_labels.append(f'roi_{kk + 1}')
+    data.columns = header_labels
+    return data

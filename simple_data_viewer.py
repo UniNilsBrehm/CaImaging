@@ -59,20 +59,6 @@ def import_f_raw(file_dir):
     return data
 
 
-def import_f_raw2(file_dir, change_header):
-    if change_header:
-        # data = pd.read_csv(file_dir, decimal='.', sep='\t', header=None).drop(columns=0)
-        data = pd.read_csv(file_dir, decimal='.', sep=None, engine="python", header=None).drop(columns=0)
-    else:
-        # data = pd.read_csv(file_dir, decimal='.', sep='\t', header=0, index_col=0)
-        data = pd.read_csv(file_dir, decimal='.', sep=None, engine="python", header=0, index_col=0)
-    header_labels = []
-    for kk in range(data.shape[1]):
-        header_labels.append(f'roi_{kk + 1}')
-    data.columns = header_labels
-    return data
-
-
 class DataViewer:
 
     def __init__(self, data_path, data, stimulus, fr_data, fr_stimulus, ref_img, rois_draw):
@@ -129,7 +115,7 @@ class DataViewer:
         # Add Menu
         self.menu_bar = tkinter.Menu(self.root)
         self.file_menu = tkinter.Menu(self.menu_bar, tearoff=0)
-        self.file_menu.add_command(label="Open", command=self._open_file)
+        self.file_menu.add_command(label="Open", command=self.open_file)
         self.file_menu.add_separator()
         self.file_menu.add_command(label="Exit", command=self._quit)
         self.menu_bar.add_cascade(label="File", menu=self.file_menu)
@@ -177,17 +163,56 @@ class DataViewer:
                 r_color=(0, 0, 255), alp=0.5, thickness=1)
             )
 
-    def _open_file(self):
+    def open_file(self):
         # file_types example: [('Recording Files', 'raw.txt')]
-        self.file_name = filedialog.askopenfilename(filetypes=[('Recording Files', 'raw.txt')])
-        self.data_file_name = os.path.split(self.file_name)[1]
-        self.rec_dir = os.path.split(self.file_name)[0]
-        self.rec_name = os.path.split(self.rec_dir)[1]
+        f_file_name = filedialog.askopenfilename(filetypes=[('Recording Files', 'raw.txt')])
+        f_rec_dir = os.path.split(f_file_name)[0]
+        f_rec_name = os.path.split(f_rec_dir)[1]
         # Import Data
-        self.data = import_f_raw(f'{self.rec_dir}/{self.rec_name}_raw.txt', change_header=False)
+        self.raw_data = import_f_raw(f'{rec_dir}/{rec_name}_raw.txt')
+
+        # Import Reference Image
+        self.ref_img = plt.imread(f'{rec_dir}/{rec_name}_ref.tif', format='tif')
+        # Import ROIS from Imagej
+        self.rois_draw = read_roi_zip(f'{rec_dir}/{rec_name}_RoiSet.zip')
+        self._compute_ref_images()
+
         # Import Stimulus
-        self.stimulus = uf.import_txt_stimulation_file(data_path=self.rec_dir, data_name=f'{self.rec_name}_stimulation.txt')
-        self.fr_rec = uf.estimate_sampling_rate(data=self.data, f_stimulation=self.stimulus, print_msg=False)
+        f_file_list = os.listdir(f_rec_dir)
+        f_stimulation_file = [s for s in f_file_list if 'stimulation' in s]
+        if f_stimulation_file:
+            # Get Stimulus
+            f_stimulation = import_stimulation_file(f'{rec_dir}/{rec_name}_stimulation.txt')
+            if f_stimulation['Volt'].max() <= 2:
+                f_stimulation['Volt'] = f_stimulation['Volt'] * -1
+            # Get Raw Values
+            self.stimulus = stimulation['Volt']
+            self.fr_data = uf.estimate_sampling_rate(data=self.raw_data, f_stimulation=f_stimulation, print_msg=True)
+        else:
+            self.stimulus = pd.DataFrame()
+            self.fr_data = uf.pixel_resolution_to_frame_rate(img_ref.shape[0])
+
+        # Convert Samples to Time
+        self.time_data = np.linspace(0, len(self.raw_data) / self.fr_data, len(self.raw_data))
+        self.time_stimulus = np.linspace(0, len(self.stimulus) / self.fr_stimulus, len(self.stimulus))
+        # Compute Delta F over F
+        self.fbs = np.percentile(self.raw_data, 5, axis=0)
+        self.data = (self.raw_data - self.fbs) / self.fbs
+        self.id = 0
+        print('NEW DATA LOADED')
+        print(f_rec_name)
+
+        # Plot Response and Stimulus Traces
+        if not self.stimulus.empty:
+            self.ax_trace.cla()
+            # Plot Response and Stimulus Traces
+            self.data_to_plot, = self.ax_trace.plot(self.time_data, self.data[self.rois[self.id]], 'k')
+            if not self.stimulus.empty:
+                self.stimulus_norm = (self.stimulus / np.max(self.stimulus)) * np.max(self.data.max())
+                self.stimulus_to_plot, = self.ax_trace.plot(self.time_stimulus, self.stimulus_norm, 'b', alpha=0.25)
+            self.title_obj = self.ax_trace.set_title(f'roi: {self.rois[self.id]} / {len(self.rois)}')
+            self.ax_trace.set_ylim([-0.5, np.max(self.data.max())])
+        self.canvas.draw()
 
     def on_key_press(self, event):
         if event.key == 'down':

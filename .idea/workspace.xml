@@ -2,12 +2,12 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="10a561b9-5b3e-4740-b797-f3c7639321fb" name="Default Changelist" comment="">
-      <change afterPath="$PROJECT_DIR$/Combine_Sweeps.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Prepare_New_Recording.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/NW_Convert_Stimulus.py" beforeDir="false" afterPath="$PROJECT_DIR$/NW_Convert_Stimulus.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/NW_Detect_Stimulus.py" beforeDir="false" afterPath="$PROJECT_DIR$/NW_Detect_Stimulus.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/NW_Linear_Regression_Scoring.py" beforeDir="false" afterPath="$PROJECT_DIR$/NW_Linear_Regression_Scoring.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/analysis_util_functions.py" beforeDir="false" afterPath="$PROJECT_DIR$/analysis_util_functions.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/simple_data_viewer.py" beforeDir="false" afterPath="$PROJECT_DIR$/simple_data_viewer.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/suite2p_pre_processing.py" beforeDir="false" afterPath="$PROJECT_DIR$/suite2p_pre_processing.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
