@@ -155,12 +155,12 @@ print(f'score threshold = {th_score}: {grand_mean_scores[idx].shape[0]} / {grand
 
 # Get cell responses
 # tags = {'stimulus_onset_type': '=="Ramp"', 'anatomy': '=="tg"', 'mean_score': f'>={th_score}'}
-tags = {'stimulus_onset_type': '=="Step"', 'anatomy': '=="allg"'}
+tags = {'stimulus_onset_type': '=="Ramp"', 'anatomy': '=="allg"', 'stimulus_onset_parameter': '==400'}
 
 cell_trials, cell_means = get_trials_for_cells(f_data=df, f_tags=tags)
 # sort from min to max responses
 cell_means = np.array(cell_means)
-# sort_means = np.argsort(np.max(cell_means, axis=1))
+sort_means = np.argsort(np.max(cell_means, axis=1))
 cell_means = cell_means[sort_means]
 
 # Create Axis for Matrix Plot
