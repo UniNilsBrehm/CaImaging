@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 from IPython import embed
 from scipy.stats import median_abs_deviation
 import Estimate_GCaMP_tau as estimate_tau
+import pickle
 
 
 def query_data_frame_to_get_index(f_df, f_tags):
@@ -106,7 +107,8 @@ def get_trials_for_cells(f_data, f_tags):
     f_cell_names = selected_data['id'].unique()
     # Go through each cell and get the trials with scores above threshold
     f_cell_responses = dict()
-    f_cell_means = []
+    # f_cell_means = []
+    f_cell_means = dict()
     for c_name in f_cell_names:
         # Cut out responses
         f_idx_cell = selected_data['id'] == c_name
@@ -116,8 +118,8 @@ def get_trials_for_cells(f_data, f_tags):
             f_data, f_index_cell, f_before_secs=f_window[0], f_after_secs=f_window[1], selected_col=activity_measure
         )
         f_cell_responses[c_name] = f_responses
-        # f_cell_means[c_name] = np.mean(f_responses, axis=0)
-        f_cell_means.append(np.mean(f_responses, axis=0))
+        f_cell_means[c_name] = np.mean(f_responses, axis=0)
+        # f_cell_means.append(np.mean(f_responses, axis=0))
     return f_cell_responses, f_cell_means
 
 
@@ -133,15 +135,129 @@ def get_cell_grand_average_score(_data):
     return grand_average_score
 
 
+def get_data_for_matrix_plots(data, save_path):
+    f_tags = [
+        {'stimulus_onset_type': '=="Step"', 'anatomy': '=="tg"'},
+        {'stimulus_onset_type': '=="Ramp"', 'anatomy': '=="tg"'},
+        {'stimulus_onset_type': '=="Step"', 'anatomy': '=="allg"'},
+        {'stimulus_onset_type': '=="Ramp"', 'anatomy': '=="allg"'},
+    ]
+    f_labels = ['tg_step', 'tg_ramp', 'allg_step', 'allg_ramp']
+
+    for kk, vv in enumerate(f_tags):
+        f_cell_trials, f_cell_means = get_trials_for_cells(f_data=data, f_tags=f_tags[kk])
+        f_cell_means = pd.DataFrame(f_cell_means)
+        # Store to HDD
+        with open(f'{save_path}/matrix_plot_{f_labels[kk]}_all_trials.pkl', 'wb') as f:
+            pickle.dump(f_cell_trials, f)
+
+        # with open('saved_dictionary.pkl', 'rb') as f:
+        #     loaded_dict = pickle.load(f)
+        f_cell_means.to_csv(f'{save_path}/matrix_plot_{f_labels[kk]}.csv', index=False)
+    uf.msg_box('INFO', 'Data for Matrix Plots stored to HDD (csv files)', '-')
+
+
+def get_audio_cells_for_matrix_plots(data, save_path):
+    f_tags = [
+        {'stimulus_onset_type': '=="Step"', 'anatomy': '=="audio"'},
+        {'stimulus_onset_type': '=="Ramp"', 'anatomy': '=="audio"'},
+        {'stimulus_onset_type': '=="Step"', 'anatomy': '=="pllg"'},
+        {'stimulus_onset_type': '=="Ramp"', 'anatomy': '=="pllg"'},
+    ]
+    f_labels = ['audio_step', 'audio_ramp', 'pllg_step', 'pllg_ramp']
+
+    for kk, vv in enumerate(f_tags):
+        f_cell_trials, f_cell_means = get_trials_for_cells(f_data=data, f_tags=f_tags[kk])
+        f_cell_means = pd.DataFrame(f_cell_means)
+        # Store to HDD
+        with open(f'{save_path}/matrix_plot_{f_labels[kk]}_all_trials.pkl', 'wb') as f:
+            pickle.dump(f_cell_trials, f)
+
+        # with open('saved_dictionary.pkl', 'rb') as f:
+        #     loaded_dict = pickle.load(f)
+        f_cell_means.to_csv(f'{save_path}/matrix_plot_{f_labels[kk]}.csv', index=False)
+    uf.msg_box('INFO', 'Audio and PLLG Cells for Matrix Plots stored to HDD (csv files)', '-')
+
+
+def get_example_traces(data, save_path):
+    # data[0]: tg and allg cells
+    # data[1]: audio and pllg cells
+
+    f_recs = ['180417_4_1', '180417_2_1', '180417_2_1', '180418_2_1']
+    f_labels = ['allg', 'tg', 'audio', 'pllg']
+    data_set = [0, 0, 1, 1]
+    cell_nr = [['roi_10', 'roi_18'], ['roi_14', 'roi_17'], ['roi_5', 'roi_8'], ['roi_14', 'roi_15']]
+
+    for kk, selected_rec in enumerate(f_recs):
+        data_frame = data[data_set[kk]]
+        idx = data_frame['rec'] == selected_rec
+        selected_data = data_frame[idx].copy()
+        col_names = [f'{selected_rec}_{cell_nr[kk][0]}', f'{selected_rec}_{cell_nr[kk][1]}']
+        collect_traces = pd.DataFrame(None, columns=col_names)
+        for ii in range(2):
+            ca_trace = selected_data[
+                (selected_data['anatomy'] == f_labels[kk])
+                & (selected_data['id'] == f'{f_recs[kk]}_{cell_nr[kk][ii]}')]['df'].reset_index(drop=True)
+            collect_traces[col_names[ii]] = ca_trace
+        # Store example traces to HDD
+        collect_traces.to_csv(f'{save_path}/example_traces_{f_labels[kk]}.csv')
+    uf.msg_box('INFO', 'EXAMPLE TRACES STORED TO HDD (csv files)', '-')
+
+
 # Select Data File
 file_dir = uf.select_file([('CSV Files', '.csv')])
 df = pd.read_csv(file_dir, index_col=0).reset_index(drop=True)
+
+df_audio_cells = pd.read_csv('E:/CaImagingAnalysis/Paper_Data/NilsWenke/TappingAuditoryCells/data_frame_complete.csv',
+                             index_col=0).reset_index(drop=True)
+
 before = 5
 after = 25
 th_score = 0.1
+
+# Get Data for Example Single Traces
+get_example_traces(data=[df, df_audio_cells],
+                   save_path='E:/CaImagingAnalysis/Paper_Data/Figures/fig_2/data')
 embed()
 exit()
+cell_names = df['rec'].unique()
+c = []
+for k in cell_names:
+    # c.append((df['rec'] == k).sum())
+    idx = df['rec'] == k
+    a = (df[idx]['anatomy'] == 'tg') & (df[idx]['mean_score'] > 0.3)
+    c.append(a.sum())
 
+c = np.array(c)
+max_id = np.where(c > 10)[0]
+most_common_cells = cell_names[max_id]
+
+df = df_audio_cells
+selected_rec = '180418_2_1'
+idx = df['rec'] == selected_rec
+selected_data = df[idx].copy()
+cell_ids = selected_data[selected_data['anatomy'] == 'pllg']['id'].unique()
+
+for k in cell_ids:
+    test = selected_data[(selected_data['anatomy'] == 'pllg') & (selected_data['id'] == k)]['df'].reset_index(drop=True)
+    plt.plot(test, label=k)
+    plt.legend()
+    plt.show()
+embed()
+exit()
+# Store Settings to HDD
+pd.Series(
+    {'before': before, 'after': after, 'th_score': th_score}
+).to_csv('E:/CaImagingAnalysis/Paper_Data/Figures/fig_2/data/settings.csv')
+
+# Get Data for Matrix Plots (Step/Ramp for TG and ALLG cells)
+get_data_for_matrix_plots(data=df, save_path='E:/CaImagingAnalysis/Paper_Data/Figures/fig_2/data')
+get_audio_cells_for_matrix_plots(data=df_audio_cells, save_path='E:/CaImagingAnalysis/Paper_Data/Figures/fig_2/data')
+
+exit()
+
+
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 grand_mean_scores = get_cell_grand_average_score(df)
 idx = grand_mean_scores > th_score
 print(f'score threshold = {th_score}: {grand_mean_scores[idx].shape[0]} / {grand_mean_scores.shape[0]}')
@@ -155,21 +271,21 @@ print(f'score threshold = {th_score}: {grand_mean_scores[idx].shape[0]} / {grand
 
 # Get cell responses
 # tags = {'stimulus_onset_type': '=="Ramp"', 'anatomy': '=="tg"', 'mean_score': f'>={th_score}'}
-tags = {'stimulus_onset_type': '=="Ramp"', 'anatomy': '=="allg"', 'stimulus_onset_parameter': '==400'}
+tags = {'stimulus_onset_type': '=="Step"', 'anatomy': '=="pllg"'}
 
-cell_trials, cell_means = get_trials_for_cells(f_data=df, f_tags=tags)
+cell_trials, cell_means = get_trials_for_cells(f_data=df_audio_cells, f_tags=tags)
+cell_means = pd.DataFrame(cell_means)
 # sort from min to max responses
-cell_means = np.array(cell_means)
-sort_means = np.argsort(np.max(cell_means, axis=1))
-cell_means = cell_means[sort_means]
+sort_means = cell_means.max(axis=0).sort_values()
+cell_means_sorted = cell_means[sort_means.keys()]
 
 # Create Axis for Matrix Plot
-x = np.arange(0, len(cell_means[0]), 1)
-y = np.arange(1, len(cell_means)+1, 1)
+x = np.arange(0, cell_means.shape[0], 1)
+y = np.arange(1, cell_means.shape[1]+1, 1)
 # Matrix Plot
 plt.figure()
 plt.title(f'cells: {len(y)}, {tags["stimulus_onset_type"][2:]}')
-plt.pcolormesh(x, y, cell_means)
+plt.pcolormesh(x, y, cell_means_sorted.to_numpy().T)
 
 plt.show()
 

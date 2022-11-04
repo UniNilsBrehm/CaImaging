@@ -144,7 +144,11 @@ def linear_regression_scoring(file_dir):
             for kk, repeat_reg in enumerate(stim_type['reg_cutout']):  # loop through repetitions (5)
                 dummy_response = stim_type['response_cutout'][kk][rois]
                 # Linear Model for one cell, one stimulus type and one repetition
-                sc, rr, aa = uf.apply_linear_model(xx=repeat_reg, yy=dummy_response, norm_reg=True)
+                try:
+                    sc, rr, aa = uf.apply_linear_model(xx=repeat_reg, yy=dummy_response, norm_reg=True)
+                except ValueError:
+                    print('Could not compute linear model for this trial')
+                    sc, rr, aa = 0, 0, 0
                 score.append(sc)
                 r_squared.append(rr)
                 slope.append(aa)
@@ -185,15 +189,15 @@ def linear_regression_scoring(file_dir):
     # Store Linear Regression Results to HDD
     # load it with np.load(dir, allow_pickle).item()
     good_cells_by_score_csv = pd.DataFrame(good_cells_by_score, columns=['roi'])
-    good_cells_by_score_csv.to_csv(f'{rec_dir}/{rec_name}_lm_good_score_rois_test.csv')
-    np.save(f'{rec_dir}/{rec_name}_lm_results_test.npy', all_cells)
-    final_mean_score.to_csv(f'{rec_dir}/{rec_name}_lm_mean_scores_test.csv')
+    good_cells_by_score_csv.to_csv(f'{rec_dir}/{rec_name}_lm_good_score_rois.csv')
+    np.save(f'{rec_dir}/{rec_name}_lm_results.npy', all_cells)
+    final_mean_score.to_csv(f'{rec_dir}/{rec_name}_lm_mean_scores.csv')
     # Create Anatomy Labels
-    # check if there is already a anatomy label
-    check = [s for s in os.listdir(rec_dir) if 'anatomy' in s]
-    if not check:
-        anatomy = pd.DataFrame(columns=good_cells_by_score_csv['roi'])
-        anatomy.to_csv(f'{rec_dir}/{rec_name}_anatomy.csv')
+    # # check if there is already a anatomy label
+    # check = [s for s in os.listdir(rec_dir) if 'anatomy' in s]
+    # if not check:
+    #     anatomy = pd.DataFrame(columns=good_cells_by_score_csv['roi'])
+    #     anatomy.to_csv(f'{rec_dir}/{rec_name}_anatomy.csv')
 
 
 if __name__ == '__main__':

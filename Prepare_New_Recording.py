@@ -74,7 +74,12 @@ file_list = os.listdir(rec_dir)
 stimulation_sutter = [s for s in file_list if 'stimulation_sutter' in s]
 if len(stimulation_sutter) > 0:
     stimulation_original = pd.read_csv(f'{rec_dir}/{rec_name}_stimulation_sutter.txt', decimal='.', sep='\t', header=None)
-    stimulation_original.columns = ['Time', 'Volt']
+    try:
+        stimulation_original.columns = ['Time', 'Volt']
+    except ValueError:
+        stimulation_original = pd.read_csv(f'{rec_dir}/{rec_name}_stimulation_sutter.txt', decimal='.', sep='\t',
+                                           header=None, index_col=0)
+        stimulation_original.columns = ['Time', 'Volt']
     stimulation_original.to_csv(f'{rec_dir}/{rec_name}_stimulation.txt', index=None)
 elif len([s for s in file_list if 'stimulation.txt' in s]) > 0:
     uf.msg_box('INFO', 'Stimulation File is already there! No need to convert it ...', sep='+')

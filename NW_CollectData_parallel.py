@@ -19,18 +19,21 @@ def import_f_raw(file_dir):
 
 def collect_data(rec_dir):
     output_data_frame = pd.DataFrame()
-    anatomy = dict.fromkeys(rec_list)
+    # anatomy = dict.fromkeys(rec_list)
     rec_name = os.path.split(rec_dir)[1]
+    rec_dob = os.path.split(os.path.split(rec_dir)[0])[1][:-4]
     # anatomy[rec_name] = pd.read_csv(f'{rec_dir}/{rec_name}_anatomy.csv')
-    anatomy[rec_name] = pd.read_csv(f'{rec_dir}/{rec_name}_selected_cells.csv', index_col=0)
+    anatomy = pd.read_csv(f'{rec_dir}/{rec_name}_selected_cells.csv', index_col=0)
     # Ignore this recording if there are no good cells (no entries in anatomy.csv)
-    if anatomy[rec_name].shape[0] > 0:
+    if anatomy.shape[0] > 0:
         # get raw values of this recording
-        f_raw = import_f_raw(f'{rec_dir}/{rec_name}_raw.txt')
+        # f_raw = import_f_raw(f'{rec_dir}/{rec_name}_raw.txt')
+        f_raw = pd.read_csv(f'{rec_dir}/{rec_name}_raw.txt')
         # Get only the good cells (based on LM score)
         # f_raw_selected = f_raw[anatomy[rec_name].keys()]
         try:
-            f_raw_selected = f_raw[anatomy[rec_name]['roi'].transpose().to_numpy()]
+            # f_raw_selected = f_raw[anatomy[rec_name]['roi'].transpose().to_numpy()]
+            f_raw_selected = f_raw[anatomy['roi'].transpose().to_numpy()]
         except:
             print(f'ERROR in: {rec_name}')
             print(f_raw[f_raw.keys()[1]])
@@ -48,7 +51,8 @@ def collect_data(rec_dir):
         z_scores = (df_f - np.mean(df_f, axis=0)) / np.std(df_f, axis=0)
 
         # get stimulus
-        stimulus = uf.import_txt_stimulation_file(f'{rec_dir}/', f'{rec_name}_stimulation', float_dec='.')
+        # stimulus = uf.import_txt_stimulation_file(f'{rec_dir}/', f'{rec_name}_stimulation', float_dec='.')
+        stimulus = pd.read_csv(f'{rec_dir}/{rec_name}_stimulation.txt')
         fr_rec = uf.estimate_sampling_rate(f_raw_selected, f_stimulation=stimulus, print_msg=False)
         time_axis = uf.convert_samples_to_time(f_raw_selected, fr=fr_rec)
 
@@ -134,8 +138,8 @@ def collect_data(rec_dir):
             roi_data['fbs'] = fbs[kk]
             roi_data['cirf_tau'] = cirf_tau
             # roi_data['anatomy'] = [anatomy[rec_name][roi].item()] * size
-            idx_anatomy = anatomy[rec_name]['roi'] == roi
-            roi_data['anatomy'] = [anatomy[rec_name]['anatomy'][idx_anatomy].item()] * size
+            idx_anatomy = anatomy['roi'] == roi
+            roi_data['anatomy'] = [anatomy['anatomy'][idx_anatomy].item()] * size
             roi_data['time'] = time_axis
             roi_data['stimulus_onset_type'] = stimulus_onsets_type
             roi_data['stimulus_onset_parameter'] = stimulus_onsets_parameter
@@ -158,7 +162,6 @@ def collect_data(rec_dir):
 
 if __name__ == '__main__':
     base_dir = uf.select_dir()
-    rec_dob = os.path.split(base_dir)[1][:-4]
     # Ignore all files and only take directories
     dob_count = len([s for s in os.listdir(base_dir) if '.' not in s])
 
@@ -175,8 +178,7 @@ if __name__ == '__main__':
     t0 = time.perf_counter()
 
     # for k, v in enumerate(rec_list): print(k, v)
-    # a = collect_data(rec_list[9])
-    # exit()
+    # a = collect_data(rec_list[0])
     # Start Parallel Loop to do all recordings in parallel
     # result will be a list of all outputs
     result = Parallel(n_jobs=-1)(delayed(collect_data)(i) for i in rec_list)
