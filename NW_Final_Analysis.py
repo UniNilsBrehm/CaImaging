@@ -182,24 +182,39 @@ def get_audio_cells_for_matrix_plots(data, save_path):
 def get_example_traces(data, save_path):
     # data[0]: tg and allg cells
     # data[1]: audio and pllg cells
+    base_path = 'E:/CaImagingAnalysis/Paper_Data/Figures/data'
+    f_stimulation = pd.read_csv(f'{base_path}/180417_2_1_stimulation_example_traces.txt')
+    protocol_template = pd.read_csv(f'{base_path}/180417_2_1_protocol.csv', index_col=0)
+    onset_template = protocol_template['Onset_Time'].iloc[0]
 
     f_recs = ['180417_4_1', '180417_2_1', '180417_2_1', '180418_2_1']
     f_labels = ['allg', 'tg', 'audio', 'pllg']
     data_set = [0, 0, 1, 1]
     cell_nr = [['roi_10', 'roi_18'], ['roi_14', 'roi_17'], ['roi_5', 'roi_8'], ['roi_14', 'roi_15']]
-
+    fr_rec = 2.0345147125756804
+    onsets = []
+    time_axis = []
     for kk, selected_rec in enumerate(f_recs):
+        pp = pd.read_csv(f'{base_path}/{selected_rec}_protocol.csv', index_col=0)
+        onset = pp['Onset_Time'].iloc[0]
+        onset_diff = onset - onset_template
         data_frame = data[data_set[kk]]
         idx = data_frame['rec'] == selected_rec
         selected_data = data_frame[idx].copy()
         col_names = [f'{selected_rec}_{cell_nr[kk][0]}', f'{selected_rec}_{cell_nr[kk][1]}']
         collect_traces = pd.DataFrame(None, columns=col_names)
+        # Time axis
         for ii in range(2):
             ca_trace = selected_data[
                 (selected_data['anatomy'] == f_labels[kk])
                 & (selected_data['id'] == f'{f_recs[kk]}_{cell_nr[kk][ii]}')]['df'].reset_index(drop=True)
+            if ii == 0:
+                time_axis = uf.convert_samples_to_time(sig=ca_trace, fr=fr_rec)
+                # align time axis to template
+                time_axis = time_axis - onset_diff
             collect_traces[col_names[ii]] = ca_trace
         # Store example traces to HDD
+        collect_traces['Time'] = time_axis
         collect_traces.to_csv(f'{save_path}/example_traces_{f_labels[kk]}.csv')
     uf.msg_box('INFO', 'EXAMPLE TRACES STORED TO HDD (csv files)', '-')
 
@@ -217,8 +232,7 @@ th_score = 0.1
 
 # Get Data for Example Single Traces
 get_example_traces(data=[df, df_audio_cells],
-                   save_path='E:/CaImagingAnalysis/Paper_Data/Figures/fig_2/data')
-embed()
+                   save_path='E:/CaImagingAnalysis/Paper_Data/Figures/data')
 exit()
 cell_names = df['rec'].unique()
 c = []
