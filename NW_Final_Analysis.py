@@ -219,6 +219,49 @@ def get_example_traces(data, save_path):
     uf.msg_box('INFO', 'EXAMPLE TRACES STORED TO HDD (csv files)', '-')
 
 
+def get_tuning_curve_data(data, save_path):
+    idx1 = data['stimulus_onset_type'] == 'Ramp'
+    ramp_params = data[idx1]['stimulus_onset_parameter'].unique()
+    idx2 = data['stimulus_onset_type'] == 'Step'
+    step_params = data[idx2]['stimulus_onset_parameter'].unique()
+
+    # Drop/Delete bad cell
+    idx_drop = data['id'] == '180509_3_1_roi_11'
+    data = data[np.invert(idx_drop)].reset_index()
+    f_tags = [
+        {'stimulus_onset_type': '=="Step"', 'stimulus_onset_parameter': '==100', 'anatomy': '=="tg"'},
+        {'stimulus_onset_type': '=="Step"', 'stimulus_onset_parameter': '==400', 'anatomy': '=="tg"'},
+        {'stimulus_onset_type': '=="Step"', 'stimulus_onset_parameter': '==1600', 'anatomy': '=="tg"'},
+        {'stimulus_onset_type': '=="Ramp"', 'stimulus_onset_parameter': '==100', 'anatomy': '=="tg"'},
+        {'stimulus_onset_type': '=="Ramp"', 'stimulus_onset_parameter': '==200', 'anatomy': '=="tg"'},
+        {'stimulus_onset_type': '=="Ramp"', 'stimulus_onset_parameter': '==400', 'anatomy': '=="tg"'},
+        {'stimulus_onset_type': '=="Ramp"', 'stimulus_onset_parameter': '==800', 'anatomy': '=="tg"'},
+        {'stimulus_onset_type': '=="Ramp"', 'stimulus_onset_parameter': '==1600', 'anatomy': '=="tg"'},
+        {'stimulus_onset_type': '=="Step"', 'stimulus_onset_parameter': '==100', 'anatomy': '=="allg"'},
+        {'stimulus_onset_type': '=="Step"', 'stimulus_onset_parameter': '==400', 'anatomy': '=="allg"'},
+        {'stimulus_onset_type': '=="Step"', 'stimulus_onset_parameter': '==1600', 'anatomy': '=="allg"'},
+        {'stimulus_onset_type': '=="Ramp"', 'stimulus_onset_parameter': '==100', 'anatomy': '=="allg"'},
+        {'stimulus_onset_type': '=="Ramp"', 'stimulus_onset_parameter': '==200', 'anatomy': '=="allg"'},
+        {'stimulus_onset_type': '=="Ramp"', 'stimulus_onset_parameter': '==400', 'anatomy': '=="allg"'},
+        {'stimulus_onset_type': '=="Ramp"', 'stimulus_onset_parameter': '==800', 'anatomy': '=="allg"'},
+        {'stimulus_onset_type': '=="Ramp"', 'stimulus_onset_parameter': '==1600', 'anatomy': '=="allg"'}
+    ]
+    f_labels = ['01_tg_step_100', '02_tg_step_400', '03_th_step_1600', '04_tg_ramp_100', '05_tg_ramp_200',
+                '06_tg_ramp_400', '07_tg_ramp_800', '08_tg_ramp_1600', '01_allg_step_100', '02_allg_step_400',
+                '03_allg_step_1600', '04_allg_ramp_100', '05_allg_ramp_200', '06_allg_ramp_400', '07_allg_ramp_800',
+                '08_allg_ramp_1600']
+
+    for kk, vv in enumerate(f_tags):
+        f_cell_trials, f_cell_means = get_trials_for_cells(f_data=data, f_tags=f_tags[kk])
+        f_cell_means = pd.DataFrame(f_cell_means)
+        # Store to HDD
+        with open(f'{save_path}/tuning_{f_labels[kk]}_all_trials.pkl', 'wb') as f:
+            pickle.dump(f_cell_trials, f)
+        # with open('saved_dictionary.pkl', 'rb') as f:
+        #     loaded_dict = pickle.load(f)
+        f_cell_means.to_csv(f'{save_path}/tuning_{f_labels[kk]}.csv', index=False)
+
+
 # Select Data File
 file_dir = uf.select_file([('CSV Files', '.csv')])
 df = pd.read_csv(file_dir, index_col=0).reset_index(drop=True)
@@ -230,10 +273,13 @@ before = 5
 after = 25
 th_score = 0.1
 
+# Get Tuning Curve Data
+get_tuning_curve_data(data=df, save_path='E:/CaImagingAnalysis/Paper_Data/Figures/fig_3/data')
+embed()
+exit()
 # Get Data for Example Single Traces
 get_example_traces(data=[df, df_audio_cells],
-                   save_path='E:/CaImagingAnalysis/Paper_Data/Figures/data')
-exit()
+                   save_path='E:/CaImagingAnalysis/Paper_Data/Figures/fig_2/data')
 cell_names = df['rec'].unique()
 c = []
 for k in cell_names:
