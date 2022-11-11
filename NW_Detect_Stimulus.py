@@ -319,6 +319,91 @@ def export_stimulus_file(s_file, s_protocol, export_protocol_name, export_stimul
     s_file.to_csv(export_stimulus_name, sep='\t', decimal='.', header=None)
 
 
+def detect_stimuli_from_trace(s_values, th_step=0.5, th_ramp=0.2, small_interval_th=0, smoothing_window=10,
+                              show_helper_figure=False, compare=False):
+
+    # Smooth Stimulus
+    stimulus = np.convolve(s_values, np.ones(smoothing_window) / smoothing_window, mode='same')
+
+    # Find Ramps and Steps in Stimulus Trace
+    # Thresholding too small intervals
+    # Min. distance between different stimuli in samples that is allowed!
+    # This somehow corresponds to the stimulus intervals in the experiment (here: 30 secs)
+    # This means it will ignore any stimulus detection x secs after the first detection! So the first must be correct!
+    # I guess this could be improved... However, if 'th_step' and 'th_ramp' are set appropriately this small interval
+    # thresholding should not be necessary anyways.
+    ramp_stimulus, step_onsets, step_offsets, ramp_onsets, ramp_offsets = find_ramps_and_steps(
+        s=stimulus.copy(), f_th_step=th_step, f_th_ramp=th_ramp, interval_th=small_interval_th
+    )
+
+    if show_helper_figure:
+        fig, axs = plt.subplots(2, 1)
+        axs[0].set_title('Stimulus Diff (red) (Estimate good step threshold value)')
+        axs[0].plot(np.diff(stimulus, append=0), 'k')
+        axs[0].plot([0, len(stimulus)], [th_step, th_step], 'r--')
+        axs[1].plot(stimulus, 'k')
+        axs[1].plot(step_onsets, np.zeros(len(step_onsets)) + th_step, 'xb', markersize=10)
+        axs[1].plot(step_offsets, np.zeros(len(step_offsets)) + th_step, 'xb', markersize=10)
+        axs[1].plot(ramp_onsets, np.zeros(len(ramp_onsets)) + th_ramp, 'xg', markersize=10)
+        axs[1].plot(ramp_offsets, np.zeros(len(ramp_offsets)) + th_ramp, 'xg', markersize=10)
+        axs[1].plot([0, len(stimulus)], [th_ramp, th_ramp], 'r--')
+        axs[1].set_title('Stimulus Trace')
+        plt.show()
+
+
+
+    # Determine ramp and step durations
+    fr = 1000
+    stimulus_time = uf.convert_samples_to_time(stimulus, fr=fr)
+    estimated_step_durations = step_offsets - step_onsets
+    estimated_ramp_durations = ramp_offsets - ramp_onsets
+
+    if compare:
+        protocol_steps = pd.DataFrame(compare)
+        protocol_steps.columns = ['Duration']
+        step_durations = compare_stimulus_duration(
+            f_protocol=protocol_steps, f_estimated_durations=estimated_step_durations
+        )
+
+    # Combine all info into one df
+    # # RAMPS
+    # ramps_df = pd.DataFrame()
+    #
+    # ramps_df['Estimated_Duration'] = estimated_ramp_durations / 2
+    # ramps_df['Onset_Sample'] = ramp_onsets
+    # ramps_df['Onset_Time'] = ramp_onsets / fr
+    # ramps_df['Offset_Sample'] = ramp_offsets
+    # ramps_df['Offset_Time'] = ramp_onsets / fr + np.array(estimated_ramp_durations) / fr
+    # ramps_df['Detected_Offset_Time'] = ramp_offsets / fr
+    # ramps_df['Stimulus'] = ['Ramp'] * len(estimated_ramp_durations)
+    # ramps_df['SamplingRate'] = [fr] * len(estimated_ramp_durations)
+
+    # STEPS
+    steps_df = pd.DataFrame()
+    steps_df['Duration'] = estimated_step_durations
+    steps_df['Estimated_Duration'] = estimated_step_durations
+    steps_df['Onset_Sample'] = step_onsets
+    steps_df['Onset_Time'] = step_onsets / fr
+    steps_df['Offset_Sample'] = step_offsets
+    steps_df['Offset_Time'] = step_onsets / fr + np.array(estimated_step_durations) / fr
+    steps_df['Detected_Offset_Time'] = step_offsets / fr
+    steps_df['Stimulus'] = ['Step'] * len(estimated_step_durations)
+    steps_df['SamplingRate'] = [fr] * len(estimated_step_durations)
+
+    # COMBINED
+    # stimulus_protocol_unsorted = pd.concat([ramps_df, steps_df])
+    stimulus_protocol_unsorted = steps_df
+    stimulus_protocol = stimulus_protocol_unsorted.copy().sort_values(by=['Onset_Time']).reset_index(drop=True)
+
+    # STORE EVERYTHING TO DATAFRAME
+    stimulus_final = pd.DataFrame()
+    stimulus_final['Time'] = stimulus_time
+    stimulus_final['Volt'] = stimulus
+    uf.msg_box(f_header='INFO', f_msg='Stimulus detected !', sep='-')
+
+    return stimulus_final, stimulus_protocol
+
+
 # MAIN SCRIPT ----------------------------------------------------------------------------------------------------------
 if __name__ == '__main__':
     if len(sys.argv) > 1:
@@ -344,24 +429,30 @@ if __name__ == '__main__':
     # Import stimulation file
     stimulation_file = pd.read_csv(f'{file_dir}/{rec_name}_stimulation.txt')
     # used_protocol_values = pd.read_csv('E:/CaImagingAnalysis/Paper_Data/Tapping/protocol_stimulus_values.csv')
-    used_protocol_values = pd.read_csv(f'{file_dir}/protocol_stimulus_values.csv')
+    # used_protocol_values = pd.read_csv(f'{file_dir}/protocol_stimulus_values.csv')
     # Import raw data
     f_raw = uf.import_f_raw(f'{file_dir}/{rec_name}_raw.txt')
 
     # Estimate Frame Rate
-    # fr_rec = uf.estimate_sampling_rate(data=f_raw, f_stimulation=stimulation_file, print_msg=False)
+    fr_rec = uf.estimate_sampling_rate(data=f_raw, f_stimulation=stimulation_file, print_msg=False)
     # Check if Recording has already been extended
-    file_list = [s for s in os.listdir(file_dir) if 'RECORDING_WAS_EXTENDED' in s]
-    if len(file_list) > 0:
-        uf.msg_box('INFO', 'Recording is the extended version', '-')
-    else:
-        uf.msg_box('WARNING', 'Recording seems to be not extended? Are You Sure to proceed?', '-')
+    # file_list = [s for s in os.listdir(file_dir) if 'RECORDING_WAS_EXTENDED' in s]
+    # if len(file_list) > 0:
+    #     uf.msg_box('INFO', 'Recording is the extended version', '-')
+    # else:
+    #     uf.msg_box('WARNING', 'Recording seems to be not extended? Are You Sure to proceed?', '-')
 
+    stimulation_file['Volt'] = stimulation_file['Volt'] * -1
     # Detect Stimulus from voltage trace
-    stimulation, protocol = detect_stimuli(
-        s_values=stimulation_file['Volt'].to_numpy(), protocol_file=True,
-        th_step=0.1, th_ramp=0.2, small_interval_th=0, smoothing_window=10, show_helper_figure=estimate_round,
-        nils_wenke=False, protocol_values=used_protocol_values)
+    stimulation, protocol = detect_stimuli_from_trace(
+        s_values=stimulation_file['Volt'].to_numpy(), th_step=0.1, th_ramp=0.2, small_interval_th=0,
+        smoothing_window=10, show_helper_figure=estimate_round, compare=[2000])
+
+    #
+    # stimulation, protocol = detect_stimuli(
+    #     s_values=stimulation_file['Volt'].to_numpy(), protocol_file=True,
+    #     th_step=0.1, th_ramp=0.2, small_interval_th=0, smoothing_window=10, show_helper_figure=estimate_round,
+    #     nils_wenke=False, protocol_values=used_protocol_values)
 
     if estimate_round:
         print(protocol[protocol['Stimulus'] == 'Step'])
@@ -370,8 +461,91 @@ if __name__ == '__main__':
         print('')
         print('INTERVALS:')
         print(protocol['Onset_Time'].diff().to_numpy())
+        embed()
+        exit()
     else:
         stimulation.to_csv(f'{file_dir}/{rec_name}_stimulation_filtered.txt')
         protocol.to_csv(f'{file_dir}/{rec_name}_protocol.csv')
         uf.msg_box('INFO', 'STORED DETECTED PROTOCOL AND STIMULUS TO HDD', sep='+')
 
+    exit()
+
+    import plottools.colors as c
+    # Compute Calcium Impulse Response Function (CIRF)
+    # taus_1 = [0.5, 1, 1.5, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15]
+    # taus = np.linspace(1, 20, 5)
+    taus_1 = [10, 15, 20, 25, 50, 200]
+    taus_2 = 2
+    amp = 1
+    regressors = []
+    binaries = []
+    for cirf_tau in taus_1:
+        # cirf = uf.create_cif(fr_rec, tau=cirf_tau)
+        cirf = uf.create_cif_double_tau(fr_rec, tau1=cirf_tau, tau2=taus_2, a=amp)
+
+        # Compute Regressor for the entire stimulus trace
+        binary, reg, _, _ = uf.create_binary_trace(
+            sig=f_raw, cirf=cirf, start=protocol['Onset_Time'], end=protocol['Offset_Time'],
+            fr=fr_rec, ca_delay=0, pad_before=5, pad_after=20, low=0, high=1
+        )
+
+        # Convolve Binary with cirf
+        # spikes = np.diff(binary)
+        # spikes[spikes<0] = 0
+        # reg = np.convolve(spikes, cirf, 'full')
+        binaries.append(binary)
+        regressors.append(reg)
+
+    ca_trace = f_raw['roi_7']
+    fbs = np.percentile(ca_trace, 5)
+    df_f = (ca_trace - fbs) / fbs
+    # Filter
+    ca_trace_filtered = uf.moving_average_filter(ca_trace, window=2)
+    df_filtered = uf.moving_average_filter(df_f, window=10)
+
+    fbs2 = np.percentile(ca_trace_filtered, 5)
+    df_f2 = (ca_trace_filtered - fbs2) / fbs2
+    # df_f2 = uf.moving_average_filter(df_f2, window=2)
+
+    # z_score = (ca_trace-np.mean(ca_trace))/np.std(ca_trace)
+    # z_score = uf.moving_average_filter(z_score, window=10) - np.min(z_score)
+    colors = c.palettes['muted']
+    color_names = list(colors.keys())
+    lightblue = c.lighter(colors['blue'], 0.4)
+    levels = np.linspace(0.25, 0.75, len(taus_1))
+
+    plt.figure(figsize=(14, 4))
+    for i, r in enumerate(regressors):
+        # plt.plot(r/np.max(r), color=c.lighter(colors['blue'], level), alpha=1)
+        # plt.plot(r/np.max(r), color=colors[color_names[i]], alpha=1, label=f'tau: {taus[i]}')
+        plt.plot(r/np.max(r) * 0.5, c.lighter(colors['red'], levels[i]), alpha=0.75, label=f'tau: {taus_1[i]}')
+
+    # plt.plot(regressors[4]/np.max(regressors[1]), colors['black'], lw=2, alpha=1, label=f'tau: {taus[4]}')
+    # plt.plot(regressors[50]/np.max(regressors[50]), colors['black'], lw=2, alpha=1, label=f'tau: {taus[50]}')
+    plt.legend()
+
+    # plt.plot(ca_trace/np.max(ca_trace), 'b', alpha=0.25)
+    # plt.plot(df_filtered/np.max(df_filtered), 'g', alpha=0.75)
+    plt.plot(binaries[0], 'k', alpha=0.2)
+    plt.plot(df_f2/np.max(df_f2), 'b', alpha=1)
+
+    plt.show()
+
+    exit()
+
+    fr = 1000
+    t = np.arange(0, 10, 1/fr)
+
+    tau1 = 0.7
+    tau2 = 1
+
+    # for tau1 in [0.5, 1, 2, 5, 10, 20, 50]:
+    c1 = 1 - np.exp(-(t / tau1))
+    c2 = np.exp(-(t / tau2))
+    cif = c1 * c2
+    plt.plot(t, c1, 'b', alpha=0.25)
+    plt.plot(t, c2, 'r', alpha=0.25)
+    plt.plot(t, cif, 'k')
+
+    plt.xlabel('Time [s]')
+    plt.show()

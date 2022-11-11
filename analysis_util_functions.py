@@ -1243,6 +1243,16 @@ def create_cif(fr, tau):
     return cif
 
 
+def create_cif_double_tau(fr, tau1, tau2, a):
+    t_max = tau2 * 10  # in sec
+    t_cif = np.arange(0, t_max*fr, 1)
+    tau1_samples = tau1 * fr
+    tau2_samples = tau2 * fr
+
+    cif = a * (1 - np.exp(-(t_cif/tau1_samples)))*np.exp(-(t_cif/tau2_samples))
+    return cif
+
+
 def apply_linear_model(xx, yy, norm_reg=True):
     # Normalize data to [0, 1]
     if norm_reg:
@@ -1354,3 +1364,8 @@ def import_f_raw(file_dir):
         header_labels.append(f'roi_{kk + 1}')
     data.columns = header_labels
     return data
+
+
+def moving_average_filter(data, window):
+    return np.convolve(data, np.ones(window) / window, mode='same')
+
