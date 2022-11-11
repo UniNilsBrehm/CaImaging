@@ -174,7 +174,7 @@ plot_model(ax=axs[:, 0], time=time, stimulus=stimulus, spikes=spikes, ca_trace=c
 plot_model(ax=axs[:, 1], time=time, stimulus=stimulus, spikes=spikes2, ca_trace=ca_trace2, v=voltage2, a=adaptation2)
 axs[2, 0].set_xlabel('Time [s]')
 axs[2, 1].set_xlabel('Time [s]')
-axs[0, 0].set_ylabel('Membrane Voltage')
+axs[0, 0].set_ylabel('Membrane Voltage [mV]')
 axs[1, 0].set_ylabel('dF/F')
 axs[2, 0].set_ylabel('Firing Rate [Hz]')
 
