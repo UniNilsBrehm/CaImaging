@@ -445,7 +445,7 @@ if __name__ == '__main__':
     stimulation_file['Volt'] = stimulation_file['Volt'] * -1
     # Detect Stimulus from voltage trace
     stimulation, protocol = detect_stimuli_from_trace(
-        s_values=stimulation_file['Volt'].to_numpy(), th_step=0.1, th_ramp=0.2, small_interval_th=0,
+        s_values=stimulation_file['Volt'].to_numpy()*-1, th_step=0.1, th_ramp=0.2, small_interval_th=0,
         smoothing_window=10, show_helper_figure=estimate_round, compare=[2000])
 
     #
