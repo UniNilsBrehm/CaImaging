@@ -209,30 +209,35 @@ def stimulus_single_pulses(pulse_times, pulse_dur, pulse_intensity=1, time_max=3
 
 
 # ----------------------------------------------------------------------------------------------------------------------
-file_name = 'sensitizing'
-# Set Leaky integrate-and-fire settings
-
-stimulus_strength = 1
+neuron_type = 'sensitizing'
+recording_name = '220525_05_01'
+# stimulation_dir = f'E:/CaImagingAnalysis/Paper_Data/Habituation/{recording_name}/{recording_name}_protocol.csv'
+stimulation_dir = f'E:/CaImagingAnalysis/Paper_Data/Sound/{recording_name}/{recording_name}_protocol.csv'
+stimulus_strength = 1.5
 # ntrials = 20
 
-# Non Adapting Neuron
-# model_settings = dict(taum=0.01, vthresh=1, noisedv=0.0001, noiseda=0.0001,
-#                       alpha_fast=0, taua_fast=0.9,
-#                       alpha_slow=0, taua_slow=12, slow_dependency=0.5)
+# Set Leaky integrate-and-fire settings
+if neuron_type == 'non_adapting':
+    # Non Adapting Neuron
+    model_settings = dict(taum=0.01, vthresh=1, noisedv=0.0001, noiseda=0.0001,
+                          alpha_fast=0, taua_fast=0.9,
+                          alpha_slow=0, taua_slow=12, slow_dependency=0.5)
+elif neuron_type == 'adapting':
+    # Adapting Neuron
+    model_settings = dict(taum=0.01, vthresh=1, noisedv=0.0001, noiseda=0.0001,
+                          alpha_fast=0.015, taua_fast=1.0,
+                          alpha_slow=0.02, taua_slow=15, slow_dependency=0.04)
+elif neuron_type == 'sensitizing':
+    # Sensitizing Neuron
+    model_settings = dict(taum=0.01, vthresh=1, noisedv=0.0001, noiseda=0.0001,
+                          alpha_fast=-0.0008, taua_fast=1,
+                          alpha_slow=-0.01, taua_slow=18, slow_dependency=0)
+else:
+    model_settings = dict(taum=0.01, vthresh=1, noisedv=0.0001, noiseda=0.0001,
+                          alpha_fast=0, taua_fast=0.9,
+                          alpha_slow=0, taua_slow=12, slow_dependency=0.5)
 
-# Adapting Neuron
-# model_settings = dict(taum=0.01, vthresh=1, noisedv=0.0001, noiseda=0.0001,
-#                       alpha_fast=0.015, taua_fast=1.0,
-#                       alpha_slow=0.02, taua_slow=15, slow_dependency=0.008)
-
-# # Sensitizing Neuron
-model_settings = dict(taum=0.01, vthresh=1, noisedv=0.0001, noiseda=0.0001,
-                      alpha_fast=-0.0008, taua_fast=1,
-                      alpha_slow=-0.01, taua_slow=18, slow_dependency=0)
-
-# stimulation_dir = 'E:/CaImagingAnalysis/Paper_Data/Habituation/220304_01_01/220304_01_01_protocol.csv'
-stimulation_dir = 'E:/CaImagingAnalysis/Paper_Data/Habituation/220414_02_01/220414_02_01_protocol.csv'
-
+# Load Protocol
 protocol = pd.read_csv(stimulation_dir, index_col=0)
 
 dt = 0.001
@@ -292,13 +297,13 @@ print('Model Computation Done')
 
 # Store Results to HDD
 save_dir = f'E:/CaImagingAnalysis/Paper_Data/lif_model/'
-model_results.to_csv(f'{save_dir}{file_name}_model_result.csv')
-spikes.to_csv(f'{save_dir}{file_name}_spikes.csv')
+model_results.to_csv(f'{save_dir}{recording_name}_{neuron_type}_model_result.csv')
+spikes.to_csv(f'{save_dir}{recording_name}_{neuron_type}_spikes.csv')
 settings = {
            'settings_a': model_settings,
            'cirf': cirf, 'cirf_tau_01': cirf_tau_1, 'cirf_tau_02': cirf_tau_2, 'cirf_time': cirf_time
            }
-np.save(f'{save_dir}{file_name}_settings.npy', settings)
+np.save(f'{save_dir}{recording_name}_{neuron_type}_settings.npy', settings)
 
 print('Model Results stored to HDD')
 

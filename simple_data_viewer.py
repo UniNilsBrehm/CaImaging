@@ -44,7 +44,7 @@ def import_f_raw(file_dir):
         delimiter = dialect.delimiter
 
     # Load data and assume the first row is the header
-    data = pd.read_csv(file_dir, decimal='.', sep=delimiter, header=0, index_col=0).reset_index(drop=True)
+    data = pd.read_csv(file_dir, decimal='.', sep=delimiter, header=0).reset_index(drop=True)
     # Chek for correct header
     try:
         a = float(data.keys()[0])
@@ -80,7 +80,6 @@ class DataViewer:
         # Compute Delta F over F
         self.fbs = np.percentile(self.raw_data, 5, axis=0)
         self.data = (self.raw_data - self.fbs) / self.fbs
-
         self.root = tkinter.Tk()
         self.window_title = os.path.split(self.data_path)[1]
         self.root.wm_title(self.window_title)
@@ -295,7 +294,6 @@ if __name__ == "__main__":
 
     # Import Raw Values
     f_raw = import_f_raw(f'{rec_dir}/{rec_name}_raw.txt')
-
     # From Resolution ---> Frame Rate
     file_list = os.listdir(rec_dir)
     stimulation_file = [s for s in file_list if 'stimulation' in s]
