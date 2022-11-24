@@ -94,6 +94,55 @@ def interval_thresholding(x, x_th):
     return y, idx
 
 
+def find_single_steps_and_trains(s, f_th_step, interval_th):
+    # Find steps with diff
+    f_stimulus_diff = np.diff(s, append=0)
+    _, f_step_onsets = find_stimulus_time(volt_threshold=f_th_step, f_stimulation=f_stimulus_diff, mode='above')
+    f_step_offsets, _ = find_stimulus_time(volt_threshold=-f_th_step, f_stimulation=f_stimulus_diff, mode='below')
+    # Find Single Pulses and Trains by intervals
+    intervals = np.diff(f_step_onsets)
+    intervals = np.append(intervals, 20000)
+    single_pulses_onsets = []
+    single_pulses_offsets = []
+    train_pulses_onsets = []
+    train_pulses_offsets = []
+    for ii, vv in enumerate(f_step_onsets):
+        # First pulse in stimulus trace:
+        if ii == 0:
+            if intervals[0] >= interval_th:
+                single_pulses_onsets.append(vv)
+                single_pulses_offsets.append(f_step_offsets[ii])
+            else:
+                train_pulses_onsets.append(vv)
+                train_pulses_offsets.append(f_step_offsets[ii])
+        else:  # Following pulses in stimulus trace:
+            if (intervals[ii] >= interval_th) & (intervals[ii-1] >= interval_th):
+                single_pulses_onsets.append(vv)
+                single_pulses_offsets.append(f_step_offsets[ii])
+            else:
+                train_pulses_onsets.append(vv)
+                train_pulses_offsets.append(f_step_offsets[ii])
+
+    # Get only trains trace and single steps trace separately
+    f_trains = s.copy()
+    f_single = np.zeros(len(s))
+    for kk in range(len(single_pulses_onsets)):
+        f_trains[single_pulses_onsets[kk]:single_pulses_offsets[kk]] = 0
+        f_single[single_pulses_onsets[kk]:single_pulses_offsets[kk]] = int(np.round(np.max(s), 1))
+
+    # Find first pulse in the pulse train
+    p_trains_intervals = np.diff(train_pulses_onsets)
+    idx_first_pulses = p_trains_intervals >= 13000
+    idx_first_pulses = np.insert(idx_first_pulses, 0, True)
+    train_first_pulses_onsets = np.array(train_pulses_onsets)[idx_first_pulses]
+    train_first_pulses_offsets = np.array(train_pulses_offsets)[idx_first_pulses]
+
+    # Delete First Train Pulses from Train Pulses
+    train_pulses_onsets = np.array(train_pulses_onsets)[np.invert(idx_first_pulses)]
+    train_pulses_offsets = np.array(train_pulses_offsets)[np.invert(idx_first_pulses)]
+    return f_single, f_trains, single_pulses_onsets, single_pulses_offsets, train_pulses_onsets, train_pulses_offsets, train_first_pulses_onsets, train_first_pulses_offsets
+
+
 def find_ramps_and_steps(s, f_th_step, f_th_ramp, interval_th):
     # Find steps with diff
     f_stimulus_diff = np.diff(s, append=0)
@@ -404,6 +453,110 @@ def detect_stimuli_from_trace(s_values, th_step=0.5, th_ramp=0.2, small_interval
     return stimulus_final, stimulus_protocol
 
 
+def detect_sound_stimuli_from_trace(s_values, th_step=0.5, smoothing_window=10,
+                              show_helper_figure=False, compare=False):
+
+    # Smooth Stimulus
+    stimulus = np.convolve(s_values, np.ones(smoothing_window) / smoothing_window, mode='same')
+
+    # Find Ramps and Steps in Stimulus Trace
+    # Thresholding too small intervals
+    # Min. distance between different stimuli in samples that is allowed!
+    # This somehow corresponds to the stimulus intervals in the experiment (here: 30 secs)
+    # This means it will ignore any stimulus detection x secs after the first detection! So the first must be correct!
+    # I guess this could be improved... However, if 'th_step' and 'th_ramp' are set appropriately this small interval
+    # thresholding should not be necessary anyways.
+    # f_single, f_trains, single_pulses_onsets, single_pulses_offsets, train_pulses_onsets, train_pulses_offsets
+    detection_results = find_single_steps_and_trains(s_values, th_step, 15000)
+    single_pulses = np.array(detection_results[0])
+    train_pulses = np.array(detection_results[1])
+    single_pulses_onsets = np.array(detection_results[2])
+    single_pulses_offsets = np.array(detection_results[3])
+    train_pulses_onsets = np.array(detection_results[4])
+    train_pulses_offsets = np.array(detection_results[5])
+    train_first_pulses_onsets = np.array(detection_results[6])
+    train_first_pulses_offsets = np.array(detection_results[7])
+    if show_helper_figure:
+        fig, axs = plt.subplots(2, 1)
+        axs[0].set_title('Stimulus Diff (red) (Estimate good step threshold value)')
+        axs[0].plot(np.diff(stimulus, append=0), 'k')
+        axs[0].plot([0, len(stimulus)], [th_step, th_step], 'r--')
+        # axs[1].plot(stimulus, 'k')
+        axs[1].plot(single_pulses, 'darkblue', alpha=0.5)
+        axs[1].plot(train_pulses, 'darkgreen', alpha=0.5)
+        axs[1].plot(single_pulses_onsets, np.zeros(len(single_pulses_onsets)) + th_step, 'xb', markersize=10)
+        axs[1].plot(single_pulses_offsets, np.zeros(len(single_pulses_offsets)) + th_step, 'xb', markersize=10)
+        axs[1].plot(train_pulses_onsets, np.zeros(len(train_pulses_onsets)) + th_step, 'xg', markersize=10)
+        axs[1].plot(train_pulses_offsets, np.zeros(len(train_pulses_offsets)) + th_step, 'xg', markersize=10)
+        axs[1].plot(train_first_pulses_onsets, np.zeros(len(train_first_pulses_onsets)) + th_step, 'xr', markersize=10)
+        axs[1].plot(train_first_pulses_offsets, np.zeros(len(train_first_pulses_offsets)) + th_step, 'xr', markersize=10)
+
+        axs[1].set_title('Stimulus Trace')
+        plt.show()
+
+    # Determine ramp and step durations
+    fr = 1000
+    stimulus_time = uf.convert_samples_to_time(stimulus, fr=fr)
+    estimated_single_durations = single_pulses_offsets - single_pulses_onsets
+    estimated_train_durations = train_pulses_offsets - train_pulses_onsets
+    estimated_first_pulse_train_durations = train_first_pulses_offsets - train_first_pulses_onsets
+
+    # SINGLE PULSES
+    single_pulses_df = pd.DataFrame()
+    single_pulses_df['Duration'] = estimated_single_durations
+    single_pulses_df['Interval'] = np.zeros(len(estimated_single_durations))
+    single_pulses_df['Onset_Sample'] = single_pulses_onsets
+    single_pulses_df['Onset_Time'] = single_pulses_onsets / fr
+    single_pulses_df['Offset_Sample'] = single_pulses_offsets
+    single_pulses_df['Offset_Time'] = single_pulses_offsets / fr
+    single_pulses_df['Stimulus'] = ['SinglePulse'] * len(estimated_single_durations)
+    single_pulses_df['SamplingRate'] = [fr] * len(estimated_single_durations)
+    
+    # PULSE TRAINS
+    idx = train_pulses_onsets >= train_first_pulses_onsets[-1]
+    intervals = np.zeros(len(idx)) + 5
+    intervals[idx] = 10
+
+    train_pulses_df = pd.DataFrame()
+    train_pulses_df['Duration'] = estimated_train_durations
+    train_pulses_df['Interval'] = intervals
+    train_pulses_df['Onset_Sample'] = train_pulses_onsets
+    train_pulses_df['Onset_Time'] = train_pulses_onsets / fr
+    train_pulses_df['Offset_Sample'] = train_pulses_offsets
+    train_pulses_df['Offset_Time'] = train_pulses_offsets / fr
+    train_pulses_df['Stimulus'] = ['TrainPulse'] * len(estimated_train_durations)
+    train_pulses_df['SamplingRate'] = [fr] * len(estimated_train_durations)
+
+    # FIRST PULSES IN TRAIN
+    idx = train_first_pulses_onsets >= train_first_pulses_onsets[-1]
+    intervals = np.zeros(len(idx)) + 5
+    intervals[idx] = 10
+
+    train_first_pulses_df = pd.DataFrame()
+    train_first_pulses_df['Duration'] = estimated_first_pulse_train_durations
+    train_first_pulses_df['Interval'] = intervals
+    train_first_pulses_df['Onset_Sample'] = train_first_pulses_onsets
+    train_first_pulses_df['Onset_Time'] = train_first_pulses_onsets / fr
+    train_first_pulses_df['Offset_Sample'] = train_first_pulses_offsets
+    train_first_pulses_df['Offset_Time'] = train_first_pulses_offsets / fr
+    train_first_pulses_df['Stimulus'] = ['FirstTrainPulse'] * len(estimated_first_pulse_train_durations)
+    # train_first_pulses_df['Stimulus'] = ['FirstTrainPulse_5s', 'FirstTrainPulse_5s', 'FirstTrainPulse_10s']
+    train_first_pulses_df['SamplingRate'] = [fr] * len(estimated_first_pulse_train_durations)
+
+    # COMBINED
+    stimulus_protocol_unsorted = pd.concat([single_pulses_df, train_pulses_df, train_first_pulses_df])
+    # stimulus_protocol_unsorted = single_pulses_df
+    stimulus_protocol = stimulus_protocol_unsorted.copy().sort_values(by=['Onset_Time']).reset_index(drop=True)
+
+    # STORE EVERYTHING TO DATAFRAME
+    stimulus_final = pd.DataFrame()
+    stimulus_final['Time'] = stimulus_time
+    stimulus_final['Volt'] = stimulus
+    uf.msg_box(f_header='INFO', f_msg='Stimulus detected !', sep='-')
+
+    return stimulus_final, stimulus_protocol
+
+
 # MAIN SCRIPT ----------------------------------------------------------------------------------------------------------
 if __name__ == '__main__':
     if len(sys.argv) > 1:
@@ -442,10 +595,19 @@ if __name__ == '__main__':
     # else:
     #     uf.msg_box('WARNING', 'Recording seems to be not extended? Are You Sure to proceed?', '-')
 
-    stimulation_file['Volt'] = stimulation_file['Volt'] * -1
-    # Detect Stimulus from voltage trace
-    stimulation, protocol = detect_stimuli_from_trace(
-        s_values=stimulation_file['Volt'].to_numpy()*-1, th_step=0.1, th_ramp=0.2, small_interval_th=0,
+    # Check if Stimulus Values must be inverted (if they are negative values)
+    if stimulation_file['Volt'].max() <= 2:
+        stimulation_file['Volt'] = stimulation_file['Volt'] * -1
+        uf.msg_box('INFO', 'Stimulus Values have been inverted', sep='-')
+    #
+    # # Detect Stimulus from voltage trace
+    # stimulation, protocol = detect_stimuli_from_trace(
+    #     s_values=stimulation_file['Volt'].to_numpy(), th_step=0.1, th_ramp=0.2, small_interval_th=0,
+    #     smoothing_window=10, show_helper_figure=estimate_round, compare=[2000])
+    #
+    # Detect SOUND Stimulus from voltage trace
+    stimulation, protocol = detect_sound_stimuli_from_trace(
+        s_values=stimulation_file['Volt'].to_numpy(), th_step=0.1,
         smoothing_window=10, show_helper_figure=estimate_round, compare=[2000])
 
     #
@@ -454,6 +616,23 @@ if __name__ == '__main__':
     #     th_step=0.1, th_ramp=0.2, small_interval_th=0, smoothing_window=10, show_helper_figure=estimate_round,
     #     nils_wenke=False, protocol_values=used_protocol_values)
 
+    if estimate_round:
+        print(protocol[protocol['Stimulus'] == 'SinglePulse'])
+        print('')
+        print(protocol[protocol['Stimulus'] == 'TrainPulse'])
+        print('')
+        print(protocol[protocol['Stimulus'] == 'FirstTrainPulse'])
+        print('')
+        print('INTERVALS:')
+        print(protocol['Onset_Time'].diff().to_numpy())
+        embed()
+        exit()
+    else:
+        stimulation.to_csv(f'{file_dir}/{rec_name}_stimulation_filtered.txt')
+        protocol.to_csv(f'{file_dir}/{rec_name}_protocol.csv')
+        uf.msg_box('INFO', 'STORED DETECTED PROTOCOL AND STIMULUS TO HDD', sep='+')
+
+    exit()
     if estimate_round:
         print(protocol[protocol['Stimulus'] == 'Step'])
         print('')
@@ -469,83 +648,83 @@ if __name__ == '__main__':
         uf.msg_box('INFO', 'STORED DETECTED PROTOCOL AND STIMULUS TO HDD', sep='+')
 
     exit()
-
-    import plottools.colors as c
-    # Compute Calcium Impulse Response Function (CIRF)
-    # taus_1 = [0.5, 1, 1.5, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15]
-    # taus = np.linspace(1, 20, 5)
-    taus_1 = [10, 15, 20, 25, 50, 200]
-    taus_2 = 2
-    amp = 1
-    regressors = []
-    binaries = []
-    for cirf_tau in taus_1:
-        # cirf = uf.create_cif(fr_rec, tau=cirf_tau)
-        cirf = uf.create_cif_double_tau(fr_rec, tau1=cirf_tau, tau2=taus_2, a=amp)
-
-        # Compute Regressor for the entire stimulus trace
-        binary, reg, _, _ = uf.create_binary_trace(
-            sig=f_raw, cirf=cirf, start=protocol['Onset_Time'], end=protocol['Offset_Time'],
-            fr=fr_rec, ca_delay=0, pad_before=5, pad_after=20, low=0, high=1
-        )
-
-        # Convolve Binary with cirf
-        # spikes = np.diff(binary)
-        # spikes[spikes<0] = 0
-        # reg = np.convolve(spikes, cirf, 'full')
-        binaries.append(binary)
-        regressors.append(reg)
-
-    ca_trace = f_raw['roi_7']
-    fbs = np.percentile(ca_trace, 5)
-    df_f = (ca_trace - fbs) / fbs
-    # Filter
-    ca_trace_filtered = uf.moving_average_filter(ca_trace, window=2)
-    df_filtered = uf.moving_average_filter(df_f, window=10)
-
-    fbs2 = np.percentile(ca_trace_filtered, 5)
-    df_f2 = (ca_trace_filtered - fbs2) / fbs2
-    # df_f2 = uf.moving_average_filter(df_f2, window=2)
-
-    # z_score = (ca_trace-np.mean(ca_trace))/np.std(ca_trace)
-    # z_score = uf.moving_average_filter(z_score, window=10) - np.min(z_score)
-    colors = c.palettes['muted']
-    color_names = list(colors.keys())
-    lightblue = c.lighter(colors['blue'], 0.4)
-    levels = np.linspace(0.25, 0.75, len(taus_1))
-
-    plt.figure(figsize=(14, 4))
-    for i, r in enumerate(regressors):
-        # plt.plot(r/np.max(r), color=c.lighter(colors['blue'], level), alpha=1)
-        # plt.plot(r/np.max(r), color=colors[color_names[i]], alpha=1, label=f'tau: {taus[i]}')
-        plt.plot(r/np.max(r) * 0.5, c.lighter(colors['red'], levels[i]), alpha=0.75, label=f'tau: {taus_1[i]}')
-
-    # plt.plot(regressors[4]/np.max(regressors[1]), colors['black'], lw=2, alpha=1, label=f'tau: {taus[4]}')
-    # plt.plot(regressors[50]/np.max(regressors[50]), colors['black'], lw=2, alpha=1, label=f'tau: {taus[50]}')
-    plt.legend()
-
-    # plt.plot(ca_trace/np.max(ca_trace), 'b', alpha=0.25)
-    # plt.plot(df_filtered/np.max(df_filtered), 'g', alpha=0.75)
-    plt.plot(binaries[0], 'k', alpha=0.2)
-    plt.plot(df_f2/np.max(df_f2), 'b', alpha=1)
-
-    plt.show()
-
-    exit()
-
-    fr = 1000
-    t = np.arange(0, 10, 1/fr)
-
-    tau1 = 0.7
-    tau2 = 1
-
-    # for tau1 in [0.5, 1, 2, 5, 10, 20, 50]:
-    c1 = 1 - np.exp(-(t / tau1))
-    c2 = np.exp(-(t / tau2))
-    cif = c1 * c2
-    plt.plot(t, c1, 'b', alpha=0.25)
-    plt.plot(t, c2, 'r', alpha=0.25)
-    plt.plot(t, cif, 'k')
-
-    plt.xlabel('Time [s]')
-    plt.show()
+    #
+    # import plottools.colors as c
+    # # Compute Calcium Impulse Response Function (CIRF)
+    # # taus_1 = [0.5, 1, 1.5, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15]
+    # # taus = np.linspace(1, 20, 5)
+    # taus_1 = [10, 15, 20, 25, 50, 200]
+    # taus_2 = 2
+    # amp = 1
+    # regressors = []
+    # binaries = []
+    # for cirf_tau in taus_1:
+    #     # cirf = uf.create_cif(fr_rec, tau=cirf_tau)
+    #     cirf = uf.create_cif_double_tau(fr_rec, tau1=cirf_tau, tau2=taus_2, a=amp)
+    #
+    #     # Compute Regressor for the entire stimulus trace
+    #     binary, reg, _, _ = uf.create_binary_trace(
+    #         sig=f_raw, cirf=cirf, start=protocol['Onset_Time'], end=protocol['Offset_Time'],
+    #         fr=fr_rec, ca_delay=0, pad_before=5, pad_after=20, low=0, high=1
+    #     )
+    #
+    #     # Convolve Binary with cirf
+    #     # spikes = np.diff(binary)
+    #     # spikes[spikes<0] = 0
+    #     # reg = np.convolve(spikes, cirf, 'full')
+    #     binaries.append(binary)
+    #     regressors.append(reg)
+    #
+    # ca_trace = f_raw['roi_7']
+    # fbs = np.percentile(ca_trace, 5)
+    # df_f = (ca_trace - fbs) / fbs
+    # # Filter
+    # ca_trace_filtered = uf.moving_average_filter(ca_trace, window=2)
+    # df_filtered = uf.moving_average_filter(df_f, window=10)
+    #
+    # fbs2 = np.percentile(ca_trace_filtered, 5)
+    # df_f2 = (ca_trace_filtered - fbs2) / fbs2
+    # # df_f2 = uf.moving_average_filter(df_f2, window=2)
+    #
+    # # z_score = (ca_trace-np.mean(ca_trace))/np.std(ca_trace)
+    # # z_score = uf.moving_average_filter(z_score, window=10) - np.min(z_score)
+    # colors = c.palettes['muted']
+    # color_names = list(colors.keys())
+    # lightblue = c.lighter(colors['blue'], 0.4)
+    # levels = np.linspace(0.25, 0.75, len(taus_1))
+    #
+    # plt.figure(figsize=(14, 4))
+    # for i, r in enumerate(regressors):
+    #     # plt.plot(r/np.max(r), color=c.lighter(colors['blue'], level), alpha=1)
+    #     # plt.plot(r/np.max(r), color=colors[color_names[i]], alpha=1, label=f'tau: {taus[i]}')
+    #     plt.plot(r/np.max(r) * 0.5, c.lighter(colors['red'], levels[i]), alpha=0.75, label=f'tau: {taus_1[i]}')
+    #
+    # # plt.plot(regressors[4]/np.max(regressors[1]), colors['black'], lw=2, alpha=1, label=f'tau: {taus[4]}')
+    # # plt.plot(regressors[50]/np.max(regressors[50]), colors['black'], lw=2, alpha=1, label=f'tau: {taus[50]}')
+    # plt.legend()
+    #
+    # # plt.plot(ca_trace/np.max(ca_trace), 'b', alpha=0.25)
+    # # plt.plot(df_filtered/np.max(df_filtered), 'g', alpha=0.75)
+    # plt.plot(binaries[0], 'k', alpha=0.2)
+    # plt.plot(df_f2/np.max(df_f2), 'b', alpha=1)
+    #
+    # plt.show()
+    #
+    # exit()
+    #
+    # fr = 1000
+    # t = np.arange(0, 10, 1/fr)
+    #
+    # tau1 = 0.7
+    # tau2 = 1
+    #
+    # # for tau1 in [0.5, 1, 2, 5, 10, 20, 50]:
+    # c1 = 1 - np.exp(-(t / tau1))
+    # c2 = np.exp(-(t / tau2))
+    # cif = c1 * c2
+    # plt.plot(t, c1, 'b', alpha=0.25)
+    # plt.plot(t, c2, 'r', alpha=0.25)
+    # plt.plot(t, cif, 'k')
+    #
+    # plt.xlabel('Time [s]')
+    # plt.show()

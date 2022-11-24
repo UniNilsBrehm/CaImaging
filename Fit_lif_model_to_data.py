@@ -6,6 +6,77 @@ from IPython import embed
 import pandas as pd
 import more_itertools
 from scipy.interpolate import interp1d
+import time as clock
+from scipy.stats.distributions import t as t_stats
+
+
+def lif_with_outputs(time, alpha_slow, alpha_fast, slow_dependency):
+    # Get Stimulus
+    stimulus_intensity = 2
+    _, stimulus = get_stimulus(stimulation_dir=f'{base_dir}{recording_name}_protocol.csv',
+                               stimulus_strength=stimulus_intensity)
+
+    taum = 0.01
+    taua_slow = 15
+    taua_fast = 0.1
+    cirf_tau_1 = 0.1
+    cirf_tau_2 = 8
+    # slow_dependency = 0
+    rng = np.random
+    noisedv = 0.001
+    vreset = 0.0
+    vthresh = 1.0
+    noiseda = 0.001
+    # taum = 0.01
+    tref = 0.003
+    dt = time[1] - time[0]  # time step
+    noisev = rng.randn(len(stimulus)) * noisedv / np.sqrt(dt)  # properly scaled voltage noise term
+    noisea = rng.randn(len(stimulus)) * noiseda / np.sqrt(dt)  # properly scaled adaptation noise term
+
+    # Compute Calcium Impulse Response Function
+    # cirf_tau_1 = 0.04
+    # cirf_tau_2 = 4
+    cirf_time = np.arange(0, cirf_tau_2 * 5, dt)
+    f_cirf = create_cif_double_tau(tau1=cirf_tau_1, tau2=cirf_tau_2, dt=dt, a=1)
+
+    # initialization:
+    # np.seterr('raise')
+    tn = time[0]
+    V = rng.rand() * (vthresh - vreset) + vreset
+    A_fast = 0.0
+    A_slow = 0.0
+
+    # integration:
+    spikes = []
+    membrane_voltage = []
+    adaptation_slow = []
+    adaptation_fast = []
+
+    for k in range(len(stimulus)):
+        membrane_voltage.append(V)  # store membrane voltage value
+        adaptation_slow.append(A_slow)
+        adaptation_fast.append(A_slow)
+        if time[k] < tn:
+            continue  # no integration during refractory period
+        V += (-V - A_slow - A_fast + stimulus[k] + noisev[k]) * dt / taum  # membrane equation
+        A_fast += (-A_fast + noisea[k]) * dt / taua_fast  # fast adaptation dynamics
+        A_slow += (-A_slow + noisea[k]) * dt / taua_slow  # slow adaptation dynamics
+
+        if V > vthresh:  # threshold condition
+            V = vreset  # voltage reset
+            A_fast += alpha_fast / taua_fast  # fast adaptation increment
+            if (A_slow > 0.001) & (slow_dependency > 0):
+                A_slow += A_slow * slow_dependency  # slow adaptation increment
+            else:
+                A_slow += alpha_slow / taua_slow  # slow adaptation increment
+            tn = time[k] + tref  # refractory period
+            spikes.append(time[k])  # store spike time
+
+    # Convolve Spikes with Calcium Impulse Response Function
+    conv = convolve_spikes(f_time=time, spike_trace=spikes, f_cirf=f_cirf)
+    return {'spikes': np.asarray(spikes), 'volt': np.asarray(membrane_voltage),
+            'a_slow': np.asarray(adaptation_slow), 'a_fast': np.asarray(adaptation_fast), 'ca': conv,
+            'time_cirf': cirf_time, 'cirf': f_cirf, 'cirf_tau_1': cirf_tau_1, 'cirf_tau_2': cirf_tau_2}
 
 
 def df_over_f_static_percentile(sig, p=5):
@@ -157,75 +228,164 @@ def linear_model(xx, yy, norm=True):
     return f_r_squared, slope
 
 
-def fit_model(time, data):
-    # def func_full(xx, aa, x_tau, cc):
-    #     return aa * np.exp(-(xx/x_tau)) + cc
-    def leaky_integrate_fire_model(time, alpha):
-        # Get Stimulus
-        # recording_name = '220304_01_01'
-        # base_dir = f'E:/CaImagingAnalysis/Paper_Data/Habituation/{recording_name}/'
-        _, stimulus = get_stimulus(stimulation_dir=f'{base_dir}{recording_name}_protocol.csv',
-                                   stimulus_strength=1)
+def fit_model(data_time, data):
+    # TODO: - preset all parameters to a default value
+    #       - then give lif function dict as parameters
+    #       - check if parameter is in input dict, if yes replace default value with it
+    #       - consider that different parameter ranges can lead to different results ...
+    #       - how does curve_fit iterate through parameter bounds?
+    #       - add initial guesses as well
 
-        taua = 15
+    def lif_for_fitting(f_time, alpha_slow, alpha_fast, slow_dependency):
+        # Get Stimulus
+        stimulus_intensity = 2
+        _, stimulus = get_stimulus(stimulation_dir=f'{base_dir}{recording_name}_protocol.csv',
+                                   stimulus_strength=stimulus_intensity)
+
+        taum = 0.01
+        taua_slow = 15
+        taua_fast = 0.1
+        cirf_tau_1 = 0.1
+        cirf_tau_2 = 8
+        # slow_dependency = 0
         rng = np.random
-        noisedv = 0.01
+        noisedv = 0.001
         vreset = 0.0
         vthresh = 1.0
-        noiseda = 0.01
-        taum = 0.01
+        noiseda = 0.001
+        # taum = 0.01
         tref = 0.003
-        dt = time[1] - time[0]                                # time step
+        dt = f_time[1] - f_time[0]                                # time step
         noisev = rng.randn(len(stimulus))*noisedv/np.sqrt(dt) # properly scaled voltage noise term
         noisea = rng.randn(len(stimulus))*noiseda/np.sqrt(dt) # properly scaled adaptation noise term
 
         # Compute Calcium Impulse Response Function
-        cirf_tau_1 = 0.04
-        cirf_tau_2 = 4
+        # cirf_tau_1 = 0.04
+        # cirf_tau_2 = 4
         cirf_time = np.arange(0, cirf_tau_2 * 5, dt)
         f_cirf = create_cif_double_tau(tau1=cirf_tau_1, tau2=cirf_tau_2, dt=dt, a=1)
 
         # initialization:
         # np.seterr('raise')
-        tn = time[0]
+        tn = f_time[0]
         V = rng.rand()*(vthresh-vreset) + vreset
-        A = 0.0
+        A_fast = 0.0
+        A_slow = 0.0
 
         # integration:
         spikes = []
-        membrane_voltage = []
-        adaptation = []
+        # membrane_voltage = []
+        # adaptation_slow = []
+        # adaptation_fast = []
+
         for k in range(len(stimulus)):
-            membrane_voltage.append(V)  # store membrane voltage value
-            adaptation.append(A)
-            if time[k] < tn:
+            # membrane_voltage.append(V)  # store membrane voltage value
+            # adaptation_slow.append(A_slow)
+            # adaptation_fast.append(A_slow)
+
+            if f_time[k] < tn:
                 continue                 # no integration during refractory period
-            V += (-V - A + stimulus[k] + noisev[k])*dt/taum   # membrane equation
-            A += (-A + noisea[k])*dt/taua  # fast adaptation dynamics
+            V += (-V - A_slow - A_fast + stimulus[k] + noisev[k])*dt/taum   # membrane equation
+            A_fast += (-A_fast + noisea[k])*dt/taua_fast  # fast adaptation dynamics
+            A_slow += (-A_slow + noisea[k]) * dt / taua_slow  # slow adaptation dynamics
+
             if V > vthresh:              # threshold condition
                 V = vreset               # voltage reset
-                A += alpha/taua          # fast adaptation increment
-
-                tn = time[k] + tref      # refractory period
-                spikes.append(time[k])   # store spike time
+                A_fast += alpha_fast/taua_fast          # fast adaptation increment
+                if (A_slow > 0.001) & (slow_dependency > 0):
+                    A_slow += A_slow * slow_dependency  # slow adaptation increment
+                else:
+                    A_slow += alpha_slow / taua_slow  # slow adaptation increment
+                tn = f_time[k] + tref      # refractory period
+                spikes.append(f_time[k])   # store spike time
 
         # Convolve Spikes with Calcium Impulse Response Function
-        conv = convolve_spikes(f_time=time, spike_trace=spikes, f_cirf=f_cirf)
+        conv = convolve_spikes(f_time=f_time, spike_trace=spikes, f_cirf=f_cirf)
         return conv
 
-    # popt, pcov = curve_fit(leaky_integrate_fire_model, time, data, bounds=(-0.5, 0.5))
-    popt, pcov = curve_fit(leaky_integrate_fire_model, time, data, 0)
+    # Set Bounding Values for Parameters
+    t0 = clock.perf_counter()
+    # lower_bounds = {'alpha_slow': -1.0,
+    #                 'alpha_fast': -1.0,
+    #                 'taua_fast': 0.001,
+    #                 'taua_slow': 5.0,
+    #                 'cirf_tau_1': 0.001,
+    #                 'cirf_tau_2': 1.0,
+    #                 'stimulus_intensity': 0.5,
+    #                 'taum': 0.001}
+    #
+    # upper_bounds = {'alpha_slow': 1.0,
+    #                 'alpha_fast': 1.0,
+    #                 'taua_fast': 4.0,
+    #                 'taua_slow': 20.0,
+    #                 'cirf_tau_1': 2,
+    #                 'cirf_tau_2': 15.0,
+    #                 'stimulus_intensity': 5.0,
+    #                 'taum': 0.2}
 
-    # one standard deviation error for parameters
-    perr = np.sqrt(np.diag(pcov))
-    alpha_opt = popt[0]
-    # intensity_opt = popt[1]
-    optimal_model_ca_trace = leaky_integrate_fire_model(time, alpha_opt)
+    lower_bounds = {'alpha_slow': -0.5,
+                    'alpha_fast': -0.5,
+                    'slow_dependency': -0.5}
+
+    upper_bounds = {'alpha_slow': 1.0,
+                    'alpha_fast': 1.0,
+                    'slow_dependency': 2}
+    initial_values = [-0.5, -0.5, 2]
+
+    lower_bounds_list = []
+    upper_bounds_list = []
+    for lu, up in zip(lower_bounds, upper_bounds):
+        lower_bounds_list.append(lower_bounds[lu])
+        upper_bounds_list.append(upper_bounds[lu])
+
+    # Set loss function
+    # available loss functions: 'linear', 'soft_l1', 'huber', 'cauchy' and 'arctan'
+    loss_function = 'huber'
+
+    # Run non-linear least square fitting
+    # out = curve_fit(lif_for_fitting, data_time, data, p0=initial_values, bounds=(lower_bounds_list, upper_bounds_list),
+    #                 maxfev=15, full_output=True, loss=loss_function)
+    out = curve_fit(lif_for_fitting, data_time, data, method='dogbox', p0=initial_values, maxfev=20, full_output=True, loss=loss_function)
+
+    popt = out[0]
+    pcov = out[1]
+    nfev = out[2]['nfev']
+
+    optimal_parameters = dict()
+    for kk, vv in enumerate(lower_bounds):
+        optimal_parameters[vv] = popt[kk]
+
+    # confidence intervals (from t dist)
+    alpha = 0.05  # 95% confidence interval = 100*(1-alpha)
+    n = len(data)  # number of data points
+    p = len(lower_bounds_list)  # number of parameters
+    dof = max(0, n - p)  # number of degrees of freedom
+
+    # student-t value for the dof and confidence level
+    tval = t_stats.ppf(1.0 - alpha / 2., dof)
+    t1 = clock.perf_counter()
+    print('')
+    print(f'Fitting took: {np.round((t1-t0)/60, 2)} mins with {nfev} function calls')
+    print('')
+    print(f'Fitting of the Neuron Model')
+    print(f'---------------------------')
+    print(f'Used loss function: {loss_function}')
+    print('')
+    for i, p, var in zip(range(n), optimal_parameters, np.diag(pcov)):
+        sigma = var ** 0.5
+        print(f'{p} : {optimal_parameters[p]:.3f} [{(optimal_parameters[p] - sigma * tval):.3f}  {(optimal_parameters[p] + sigma * tval):.3f}]')
+
+    # Run lif model with optimal parameters
+    model_results = lif_with_outputs(data_time, **optimal_parameters)
+    model_results['loss_function'] = loss_function
+    optimal_model_ca_trace = model_results['ca']
+    recording_z = (data - np.mean(data)) / np.std(data)
+    model_z = (optimal_model_ca_trace - np.mean(optimal_model_ca_trace)) / np.std(optimal_model_ca_trace)
 
     # Linear Model
     # Run Linear Model (on z score traces)
-    lm_x = (optimal_model_ca_trace - np.mean(optimal_model_ca_trace)) / np.std(optimal_model_ca_trace)
-    lm_y = (ca_trace_recording - np.mean(ca_trace_recording)) / np.std(ca_trace_recording)
+    lm_x = model_z
+    lm_y = recording_z
 
     # start = 0
     # end = 1000
@@ -233,27 +393,68 @@ def fit_model(time, data):
     # lm_y = lm_y[(tt >= start) & (tt < end)]
     lm_r2, lm_slope = linear_model(xx=lm_x, yy=lm_y, norm=True)
     sum_squares = np.sum((lm_x - lm_y) ** 2) / len(lm_x)
+    # lr_results = {'r_squared': lm_r2, 'slope': lm_slope, 'ms': sum_squares}
+    optimal_parameters['lrm_r_squared'] = lm_r2
+    optimal_parameters['lrm_slope'] = lm_slope
+    optimal_parameters['lrm_ms'] = sum_squares
 
+    t2 = clock.perf_counter()
     print('')
-    print('Fitting of the Neuron Model:')
-    print(f'alpha: {alpha_opt} (p=<{np.round(perr[0], 5)})')
     print('')
-    print('Linear Model for the optimal Neuron Model')
-    print(f'R²: {lm_r2}, slope: {lm_slope}')
+    print(f'Linear Regression took: {(t2-t1):.4f} secs')
+    print(f'Linear Regression between optimal LIF Model and Ca-Recording')
+    print(f'------------------------------------------------------------')
+    print('')
+    print(f'R²: {lm_r2:.4f}, slope: {lm_slope:.4f}, MS: {sum_squares:.4f}')
     print('')
 
-    plt.plot(time, data/np.max(data), 'b')
-    plt.plot(time, optimal_model_ca_trace/np.max(optimal_model_ca_trace), 'r')
+    # Reconstruct optimal CIRF Function
+    # dt = data_time[1] - data_time[0]  # time step
+    # c_f_time = np.arange(0, optimal_parameters['cirf_tau_2'] * 5, dt)
+    # c_f = create_cif_double_tau(tau1=optimal_parameters['cirf_tau_1'], tau2=optimal_parameters['cirf_tau_2'], dt=dt, a=1)
+
+    fig, ax = plt.subplots(2, 1)
+    # ax[0].plot(c_f_time, c_f, 'k')
+    # ax[0].set_title(f"CIRF: tau1={optimal_parameters['cirf_tau_1']:.2f}, tau2={optimal_parameters['cirf_tau_2']:.2f}")
+    ax[1].plot(data_time, recording_z, 'b')
+    ax[1].plot(data_time, model_z, 'r')
     plt.show()
+    return model_results, optimal_parameters
 
-    embed()
-    exit()
+
+def down_sample_data(data, factor):
+    factor = int(factor)
+    data_down = data[::factor]
+    return data_down
+
+
+def down_sampling_results(time, stimulus, results, ca_recording, down_sampling_factor=10):
+    # returns from model are
+    #        {'spikes': np.asarray(spikes), 'volt': np.asarray(membrane_voltage),
+    #         'a_slow': np.asarray(adaptation_slow), 'a_fast': np.asarray(adaptation_fast), 'ca': conv,
+    #         'time_cirf': cirf_time, 'cirf': f_cirf, 'cirf_tau_1': cirf_tau_1, 'cirf_tau_2': cirf_tau_2}
+
+    ca = down_sample_data(results['ca'], down_sampling_factor)
+    a_slow = down_sample_data(results['a_slow'], down_sampling_factor)
+    a_fast = down_sample_data(results['a_fast'], down_sampling_factor)
+    stimulus_down = down_sample_data(stimulus, down_sampling_factor)
+    time_down = down_sample_data(time, down_sampling_factor)
+    ca_recording_down = down_sample_data(ca_recording, down_sampling_factor)
+    model_results = pd.DataFrame(np.array([time_down, stimulus_down, ca, a_slow, a_fast, ca_recording_down]).T,
+                                 columns=['time', 'stimulus', 'ca', 'a_slow', 'a_fast', 'recording'])
+
+    spikes = pd.DataFrame(results['spikes'], columns=['spike_times'])
+    return model_results, spikes
 
 
 if __name__ == '__main__':
     recording_name = '220414_02_01'
+    # base_dir = f'E:/CaImagingAnalysis/Paper_Data/Sound/{recording_name}/'
     base_dir = f'E:/CaImagingAnalysis/Paper_Data/Habituation/{recording_name}/'
-    time, _ = get_stimulus(stimulation_dir=f'{base_dir}{recording_name}_protocol.csv', stimulus_strength=1)
+    save_dir = f'E:/CaImagingAnalysis/Paper_Data/lif_model/fitting/'
+
+    # Load Data
+    time, stimulation = get_stimulus(stimulation_dir=f'{base_dir}{recording_name}_protocol.csv', stimulus_strength=1)
     f_raw_dir = f'{base_dir}{recording_name}_raw.txt'
     f_raw = pd.read_csv(f_raw_dir)
 
@@ -262,8 +463,22 @@ if __name__ == '__main__':
     roi = 'roi_26'
     ca_trace_recording = df_f[roi]
     fr_rec = 2.0345147125756804
+
     # Interpolation Ca Recording Trace for Linear Model
     time_recording = convert_samples_to_time(ca_trace_recording.to_numpy(), fr=fr_rec)
     f = interp1d(time_recording, ca_trace_recording, kind='linear', bounds_error=False, fill_value=0)
     ca_trace_recording = f(time)
-    fit_model(time, ca_trace_recording)
+
+    # Run non-linear least square fitting for lif model onto recording data
+    results_model, settings = fit_model(time, ca_trace_recording)
+
+    exit()
+    # STORE DATA TO HDD
+    # Down-Sampling
+    results_model_down, spikes = down_sampling_results(time, stimulation, results_model,
+                                                       ca_trace_recording, down_sampling_factor=10)
+    results_model_down.to_csv(f'{save_dir}{recording_name}_{roi}_model_result.csv')
+    spikes.to_csv(f'{save_dir}{recording_name}_{roi}_spikes.csv')
+    np.save(f'{save_dir}{recording_name}_{roi}_optimal_settings.npy', settings)
+    print('Optimal Model Data stored to HDD')
+

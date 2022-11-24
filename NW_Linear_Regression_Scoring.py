@@ -12,7 +12,7 @@ import time
 """
 
 
-def linear_regression_scoring(file_dir):
+def linear_regression_scoring(file_dir, protocol_style):
     # SETTINGS +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     score_th = 0.1
     cirf_tau = 3  # in secs
@@ -35,9 +35,6 @@ def linear_regression_scoring(file_dir):
     # Import Protocol
     protocol = pd.read_csv(f'{rec_dir}/{rec_name}_protocol.csv', index_col=0)
 
-    # Import ROIS from Imagej
-    # rois_in_ref = read_roi_zip(f'{rec_dir}/refs/{rec_name}_ROI.tif_RoiSet.zip')
-
     # Import raw fluorescence traces (rois)
     # It is important that the header is equal to the correct ROI number
     # All ROIS of the recording
@@ -50,62 +47,21 @@ def linear_regression_scoring(file_dir):
     pad_before = 5  # in secs
     pad_after = 20  # in secs
 
-    # # First Store Original as Backup
-    # f_raw.to_csv(f'{rec_dir}/{rec_name}_raw_original.txt', decimal='.', sep='\t', header=None)
-    # stimulus.to_csv(f'{rec_dir}/{rec_name}_stimulation_original.txt', decimal='.', sep='\t', header=None)
+    if protocol_style == 'sound':
+        # Get step and ramp stimuli
+        single_parameters = protocol[protocol['Stimulus'] == 'SinglePulse']['Duration'].unique()
+        train_parameters = protocol[protocol['Stimulus'] == 'TrainPulse']['Duration'].unique()
+        stimulus_parameters = pd.DataFrame()
+        stimulus_parameters['parameter'] = np.append(single_parameters, train_parameters)
+        stimulus_parameters['type'] = np.append(['SinglePulse'] * len(single_parameters), ['TrainPulse'] * len(train_parameters))
+    else:
+        # Get step and ramp stimuli
+        step_parameters = protocol[protocol['Stimulus'] == 'Step']['Duration'].unique()
+        ramp_parameters = protocol[protocol['Stimulus'] == 'Ramp']['Duration'].unique()
 
-    # # Correct if stimulation starts to early
-    # if protocol['Onset_Time'].min() - pad_before < 0:
-    #     time_added = pad_before * 2
-    #     print('First Stimulus Onset too early ... Will correct for that ...')
-    #     insertion = pd.DataFrame()
-    #     insertion['Time'] = np.linspace(0, time_added,  time_added * 1000)
-    #     insertion['Volt'] = np.zeros(len(insertion['Time']))
-    #     stimulus = pd.concat([insertion, stimulus.iloc[1:]], ignore_index=True)
-    #
-    #     # Correct Onset and Offset Times
-    #
-    #     rois_count = len(f_raw.keys())
-    #     time_added_rec_samples = int(time_added * fr_rec)
-    #     added_values = f_raw.iloc[:3, :].mean()
-    #     f_insertion = pd.DataFrame(np.zeros((time_added_rec_samples, rois_count)), columns=f_raw.keys())
-    #     f_raw = pd.concat([f_insertion + added_values, f_raw], ignore_index=True)
-    #
-    #     # Store extended recording to HDD
-    #     f_raw.to_csv(f'{rec_dir}/{data_file_name}', decimal='.', sep='\t', header=None)
-    #     stimulus.to_csv(f'{rec_dir}/{rec_name}_stimulation.txt', decimal='.', sep='\t', header=None)
-    #     pd.DataFrame().to_csv(f'{rec_dir}/{rec_name}_RECORDING_WAS_EXTENDED_FROM_START.txt', decimal='.', sep='\t', header=None)
-    #
-    # # Correct for too short recordings
-    # diff = stimulus['Time'].max() - protocol['Offset_Time'].max()
-    # if diff <= pad_after:
-    #     print('Stimulus Recording too short ... Will correct for that ...')
-    #     t = np.linspace(stimulus['Time'].max()+1/1000, stimulus['Time'].max()+pad_after*2, 1000)
-    #     v = np.zeros(len(t))
-    #     additional_stimulus = pd.DataFrame()
-    #     additional_stimulus['Time'] = t
-    #     additional_stimulus['Volt'] = v
-    #
-    #     tt = int(pad_after * 2 * fr_rec)
-    #     w = np.zeros((tt, len(f_raw.keys()))) + np.percentile(f_raw, 5)
-    #     additional_recording = pd.DataFrame(w, columns=f_raw.keys())
-    #
-    #     # add this to original recording
-    #     stimulus = pd.concat([stimulus, additional_stimulus])
-    #     f_raw = pd.concat([f_raw, additional_recording])
-    #
-    #     # Store extended recording to HDD
-    #     f_raw.to_csv(f'{rec_dir}/{data_file_name}', decimal='.', sep='\t', header=None)
-    #     stimulus.to_csv(f'{rec_dir}/{rec_name}_stimulation.txt', decimal='.', sep='\t', header=None)
-    #     pd.DataFrame().to_csv(f'{rec_dir}/{rec_name}_RECORDING_WAS_EXTENDED_FROM_END.txt', decimal='.', sep='\t', header=None)
-
-    # Get step and ramp stimuli
-    step_parameters = protocol[protocol['Stimulus'] == 'Step']['Duration'].unique()
-    ramp_parameters = protocol[protocol['Stimulus'] == 'Ramp']['Duration'].unique()
-
-    stimulus_parameters = pd.DataFrame()
-    stimulus_parameters['parameter'] = np.append(step_parameters, ramp_parameters)
-    stimulus_parameters['type'] = np.append(['Step'] * len(step_parameters), ['Ramp'] * len(ramp_parameters))
+        stimulus_parameters = pd.DataFrame()
+        stimulus_parameters['parameter'] = np.append(step_parameters, ramp_parameters)
+        stimulus_parameters['type'] = np.append(['Step'] * len(step_parameters), ['Ramp'] * len(ramp_parameters))
 
     # Compute delta f over f
     # f_raw_filtered = uf.filter_raw_data(sig=f_raw, win=filter_window, o=filter_order)
@@ -206,7 +162,7 @@ if __name__ == '__main__':
 
     t0 = time.perf_counter()
     uf.msg_box('INFO', f'Linear Regression Scoring is starting ...', '+')
-    linear_regression_scoring(base_dir)
+    linear_regression_scoring(base_dir, protocol_style='sound')
     t1 = time.perf_counter()
     uf.msg_box('INFO', f'Linear Regression Scoring finished!\n'
                        f'It took: {np.round(t1-t0, 2)} s', '+')

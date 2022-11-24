@@ -17,7 +17,7 @@ def import_f_raw(file_dir):
     return data
 
 
-def collect_data(rec_dir):
+def collect_data(rec_dir, protocol_style):
     output_data_frame = pd.DataFrame()
     # anatomy = dict.fromkeys(rec_list)
     rec_name = os.path.split(rec_dir)[1]
@@ -46,7 +46,7 @@ def collect_data(rec_dir):
 
         # Compute delta f over f
         df_f = (f_raw_selected_filtered - fbs) / fbs
-
+        # df_f, fbs, _ = uf.compute_df_over_f(f_raw_selected_filtered, window_size=30, per=5, fast=True)
         # Compute z-scores
         z_scores = (df_f - np.mean(df_f, axis=0)) / np.std(df_f, axis=0)
 
@@ -60,7 +60,8 @@ def collect_data(rec_dir):
         protocol = pd.read_csv(f'{rec_dir}/{rec_name}_protocol.csv', index_col=0)
 
         # get linear regression model results
-        lm = np.load(f'{rec_dir}/{rec_name}_lm_results.npy', allow_pickle=True).item()
+        if stimulus_protocol_style != 'sound':
+            lm = np.load(f'{rec_dir}/{rec_name}_lm_results.npy', allow_pickle=True).item()
 
         # Compute Calcium Impulse Response Function (CIRF)
         cirf_tau = 10
@@ -76,13 +77,24 @@ def collect_data(rec_dir):
         # Correct for too long Regressors (due to convolution ...)
         reg_norm = reg_norm[:len(binary)]
 
-        # Get List of used stimuli
-        step_parameters = protocol[protocol['Stimulus'] == 'Step']['Duration'].unique()
-        ramp_parameters = protocol[protocol['Stimulus'] == 'Ramp']['Duration'].unique()
-        stimulus_used = pd.DataFrame()
-        stimulus_used['parameter'] = np.append(step_parameters, ramp_parameters)
-        stimulus_used['type'] = np.append(['Step'] * len(step_parameters), ['Ramp'] * len(ramp_parameters))
-        stimulus_used['count'] = [0] * len(stimulus_used)
+        if protocol_style == 'sound':
+            # Get List of used stimuli
+            single_parameters = protocol[protocol['Stimulus'] == 'SinglePulse']['Interval'].unique()
+            train_parameters = protocol[protocol['Stimulus'] == 'TrainPulse']['Interval'].unique()
+            first_pulse_parameters = protocol[protocol['Stimulus'] == 'FirstTrainPulse']['Interval'].unique()
+            stimulus_used = pd.DataFrame()
+            stimulus_used['parameter'] = np.concatenate([single_parameters, train_parameters, first_pulse_parameters])
+            stimulus_used['type'] = np.concatenate([['Single'] * len(single_parameters), ['Train'] * len(train_parameters),
+                                              ['First'] * len(first_pulse_parameters)])
+            stimulus_used['count'] = [0] * len(stimulus_used)
+        else:
+            # Get List of used stimuli
+            step_parameters = protocol[protocol['Stimulus'] == 'Step']['Duration'].unique()
+            ramp_parameters = protocol[protocol['Stimulus'] == 'Ramp']['Duration'].unique()
+            stimulus_used = pd.DataFrame()
+            stimulus_used['parameter'] = np.append(step_parameters, ramp_parameters)
+            stimulus_used['type'] = np.append(['Step'] * len(step_parameters), ['Ramp'] * len(ramp_parameters))
+            stimulus_used['count'] = [0] * len(stimulus_used)
 
         # stimulus_onsets_type = ['NaN'] * len(f_raw_selected)
         stimulus_onsets_type = pd.DataFrame(np.zeros((len(f_raw_selected))) * np.nan)
@@ -97,13 +109,16 @@ def collect_data(rec_dir):
             columns=f_raw_selected.keys()
         )
         mean_scores_rois = trial_scores.copy()
-
+        cc = 0
         for kk in range(protocol.shape[0]):
             onset = int(protocol['Onset_Time'].iloc[kk] * fr_rec)
             offset = int(protocol['Offset_Time'].iloc[kk] * fr_rec)
 
             s_type = protocol['Stimulus'].iloc[kk]
-            s_parameter = protocol['Duration'].iloc[kk]
+            if stimulus_protocol_style == 'sound':
+                s_parameter = protocol['Interval'].iloc[kk]
+            else:
+                s_parameter = protocol['Duration'].iloc[kk]
 
             # Set trial
             idx_trial = (stimulus_used['type'] == s_type) & (stimulus_used['parameter'] == s_parameter)
@@ -114,15 +129,23 @@ def collect_data(rec_dir):
             stimulus_onsets_parameter.iloc[onset] = s_parameter
             stimulus_offsets_type.iloc[offset] = s_type
             stimulus_offsets_parameter.iloc[offset] = s_parameter
+            # if cc == 38:
+            #     embed()
+            #     exit()
+            # cc += 1
 
-            # Trial Number on Stimulus onset time
-            trial = stimulus_used.loc[idx_trial, 'count'].item()
-            stimulus_trial.iloc[onset] = trial
+            if stimulus_protocol_style != 'sound':
+                # Trial Number on Stimulus onset time
+                if protocol_style == 'sound':
+                    trial = 0
+                else:
+                    trial = stimulus_used.loc[idx_trial, 'count'].item()
+                stimulus_trial.iloc[onset] = trial
 
-            s_name = f'{s_type}-{s_parameter}'
-            for key in f_raw_selected:
-                trial_scores[key].iloc[onset] = np.round(lm[key][s_name]['score'][trial-1], 5)
-                mean_scores_rois[key].iloc[onset] = np.round(np.mean(lm[key][s_name]['score'], axis=0), 5)
+                s_name = f'{s_type}-{s_parameter}'
+                for key in f_raw_selected:
+                    trial_scores[key].iloc[onset] = np.round(lm[key][s_name]['score'][trial-1], 5)
+                    mean_scores_rois[key].iloc[onset] = np.round(np.mean(lm[key][s_name]['score'], axis=0), 5)
 
         # Now loop through all rois
         for kk, roi in enumerate(f_raw_selected):
@@ -146,8 +169,9 @@ def collect_data(rec_dir):
             roi_data['stimulus_offset_type'] = stimulus_offsets_type
             roi_data['stimulus_offset_parameter'] = stimulus_offsets_parameter
             roi_data['trial'] = stimulus_trial
-            roi_data['mean_score'] = mean_scores_rois[roi]
-            roi_data['score'] = trial_scores[roi]
+            if stimulus_protocol_style != 'sound':
+                roi_data['mean_score'] = mean_scores_rois[roi]
+                roi_data['score'] = trial_scores[roi]
             roi_data['dob'] = rec_dob
             roi_data['rec_date'] = rec_name[:6]
             roi_data['binary'] = binary
@@ -162,6 +186,7 @@ def collect_data(rec_dir):
 
 if __name__ == '__main__':
     base_dir = uf.select_dir()
+    stimulus_protocol_style = 'sound'
     # Ignore all files and only take directories
     dob_count = len([s for s in os.listdir(base_dir) if '.' not in s])
 
@@ -178,10 +203,11 @@ if __name__ == '__main__':
     t0 = time.perf_counter()
 
     # for k, v in enumerate(rec_list): print(k, v)
-    # a = collect_data(rec_list[0])
+    # a = collect_data(rec_list[1], stimulus_protocol_style)
+    # exit()
     # Start Parallel Loop to do all recordings in parallel
     # result will be a list of all outputs
-    result = Parallel(n_jobs=-1)(delayed(collect_data)(i) for i in rec_list)
+    result = Parallel(n_jobs=-1)(delayed(collect_data)(i, stimulus_protocol_style) for i in rec_list)
     t1 = time.perf_counter()
 
     # Combine all recordings into one data frame
