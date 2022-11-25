@@ -381,13 +381,27 @@ def find_tg_sub_types(data, save_path, sub_th=0.5):
     idx_sub.to_csv(f'{save_path}/subtypes.csv')
 
 
+def get_data_water_flow():
+    rec_name = '221008_11_01'
+    rec_dir = f'E:/CaImagingAnalysis/Paper_Data/WaterFlow/{rec_name}/'
+    f_raw = pd.read_csv(f'{rec_dir}{rec_name}_raw.txt')
+    stimulus = pd.read_csv(f'{rec_dir}{rec_name}_stimulation.txt')
+    fr_rec = uf.estimate_sampling_rate(f_raw, stimulus, print_msg=True)
+    fr_stimulus = 10000
+    stimulus_settings = pd.read_csv(f'{rec_dir}{rec_name}_protocol_stimulation.csv', index_col=0)
+    protocol = pd.read_csv(f'{rec_dir}{rec_name}_protocol.csv', index_col=0)
+    embed()
+    exit()
+
 # Select Data File
 # file_dir = uf.select_file([('CSV Files', '.csv')])
 # file_dir = 'E:/CaImagingAnalysis/Paper_Data/NilsWenke/recordings/data_frame_complete.csv'
 file_dir = 'E:/CaImagingAnalysis/Paper_Data/Sound/Habituation/data_frame_complete.csv'
 save_dir = 'E:/CaImagingAnalysis/Paper_Data/Figures/fig_4/data'
 
-df = pd.read_csv(file_dir, index_col=0, low_memory=False).reset_index(drop=True)
+get_data_water_flow()
+exit()
+# df = pd.read_csv(file_dir, index_col=0, low_memory=False).reset_index(drop=True)
 
 # df_audio_cells = pd.read_csv('E:/CaImagingAnalysis/Paper_Data/NilsWenke/TappingAuditoryCells/data_frame_complete.csv',
 #                              index_col=0).reset_index(drop=True)
@@ -396,7 +410,7 @@ before = 5
 after = 25
 th_score = 0.1
 
-sound_get_data_for_matrix_plots(df, save_path=save_dir, f_all_windows=[[1, 15], [1, 4], [5, 200]])
+# sound_get_data_for_matrix_plots(df, save_path=save_dir, f_all_windows=[[1, 15], [1, 4], [5, 200]])
 # get_selected_traces(df, save_dir, protocol_template=pd.read_csv(f'{save_dir}/220525_04_01_protocol.csv', index_col=0))
 exit()
 

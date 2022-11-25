@@ -600,15 +600,15 @@ if __name__ == '__main__':
         stimulation_file['Volt'] = stimulation_file['Volt'] * -1
         uf.msg_box('INFO', 'Stimulus Values have been inverted', sep='-')
     #
-    # # Detect Stimulus from voltage trace
-    # stimulation, protocol = detect_stimuli_from_trace(
-    #     s_values=stimulation_file['Volt'].to_numpy(), th_step=0.1, th_ramp=0.2, small_interval_th=0,
-    #     smoothing_window=10, show_helper_figure=estimate_round, compare=[2000])
-    #
-    # Detect SOUND Stimulus from voltage trace
-    stimulation, protocol = detect_sound_stimuli_from_trace(
-        s_values=stimulation_file['Volt'].to_numpy(), th_step=0.1,
+    # Detect Stimulus from voltage trace
+    stimulation, protocol = detect_stimuli_from_trace(
+        s_values=stimulation_file['Volt'].to_numpy(), th_step=0.1, th_ramp=0.2, small_interval_th=0,
         smoothing_window=10, show_helper_figure=estimate_round, compare=[2000])
+
+    # Detect SOUND Stimulus from voltage trace
+    # stimulation, protocol = detect_sound_stimuli_from_trace(
+    #     s_values=stimulation_file['Volt'].to_numpy(), th_step=0.1,
+    #     smoothing_window=10, show_helper_figure=estimate_round, compare=[2000])
 
     #
     # stimulation, protocol = detect_stimuli(
@@ -616,23 +616,23 @@ if __name__ == '__main__':
     #     th_step=0.1, th_ramp=0.2, small_interval_th=0, smoothing_window=10, show_helper_figure=estimate_round,
     #     nils_wenke=False, protocol_values=used_protocol_values)
 
-    if estimate_round:
-        print(protocol[protocol['Stimulus'] == 'SinglePulse'])
-        print('')
-        print(protocol[protocol['Stimulus'] == 'TrainPulse'])
-        print('')
-        print(protocol[protocol['Stimulus'] == 'FirstTrainPulse'])
-        print('')
-        print('INTERVALS:')
-        print(protocol['Onset_Time'].diff().to_numpy())
-        embed()
-        exit()
-    else:
-        stimulation.to_csv(f'{file_dir}/{rec_name}_stimulation_filtered.txt')
-        protocol.to_csv(f'{file_dir}/{rec_name}_protocol.csv')
-        uf.msg_box('INFO', 'STORED DETECTED PROTOCOL AND STIMULUS TO HDD', sep='+')
-
-    exit()
+    # if estimate_round:
+    #     print(protocol[protocol['Stimulus'] == 'SinglePulse'])
+    #     print('')
+    #     print(protocol[protocol['Stimulus'] == 'TrainPulse'])
+    #     print('')
+    #     print(protocol[protocol['Stimulus'] == 'FirstTrainPulse'])
+    #     print('')
+    #     print('INTERVALS:')
+    #     print(protocol['Onset_Time'].diff().to_numpy())
+    #     embed()
+    #     exit()
+    # else:
+    #     stimulation.to_csv(f'{file_dir}/{rec_name}_stimulation_filtered.txt')
+    #     protocol.to_csv(f'{file_dir}/{rec_name}_protocol.csv')
+    #     uf.msg_box('INFO', 'STORED DETECTED PROTOCOL AND STIMULUS TO HDD', sep='+')
+    #
+    # exit()
     if estimate_round:
         print(protocol[protocol['Stimulus'] == 'Step'])
         print('')
