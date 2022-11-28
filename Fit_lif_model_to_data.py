@@ -323,14 +323,14 @@ def fit_model(data_time, data):
     #                 'stimulus_intensity': 5.0,
     #                 'taum': 0.2}
 
-    lower_bounds = {'alpha_slow': -0.5,
-                    'alpha_fast': -0.5,
-                    'slow_dependency': -0.5}
+    lower_bounds = {'alpha_slow': -2,
+                    'alpha_fast': -2,
+                    'slow_dependency': -2}
 
-    upper_bounds = {'alpha_slow': 1.0,
-                    'alpha_fast': 1.0,
+    upper_bounds = {'alpha_slow': 2.0,
+                    'alpha_fast': 2.0,
                     'slow_dependency': 2}
-    initial_values = [-0.5, -0.5, 2]
+    initial_values = [0, 0, 0]
 
     lower_bounds_list = []
     upper_bounds_list = []
@@ -340,12 +340,14 @@ def fit_model(data_time, data):
 
     # Set loss function
     # available loss functions: 'linear', 'soft_l1', 'huber', 'cauchy' and 'arctan'
-    loss_function = 'huber'
+    loss_function = 'linear'
 
     # Run non-linear least square fitting
+    # out = curve_fit(lif_for_fitting, data_time, data, bounds=(lower_bounds_list, upper_bounds_list),
+    #                 maxfev=15, full_output=True, loss=loss_function)
     # out = curve_fit(lif_for_fitting, data_time, data, p0=initial_values, bounds=(lower_bounds_list, upper_bounds_list),
     #                 maxfev=15, full_output=True, loss=loss_function)
-    out = curve_fit(lif_for_fitting, data_time, data, method='dogbox', p0=initial_values, maxfev=20, full_output=True, loss=loss_function)
+    out = curve_fit(lif_for_fitting, data_time, data, method='lm', maxfev=20, full_output=True)
 
     popt = out[0]
     pcov = out[1]
@@ -448,9 +450,9 @@ def down_sampling_results(time, stimulus, results, ca_recording, down_sampling_f
 
 
 if __name__ == '__main__':
-    recording_name = '220414_02_01'
-    # base_dir = f'E:/CaImagingAnalysis/Paper_Data/Sound/{recording_name}/'
-    base_dir = f'E:/CaImagingAnalysis/Paper_Data/Habituation/{recording_name}/'
+    recording_name = '220525_05_01'
+    base_dir = f'E:/CaImagingAnalysis/Paper_Data/Sound/Duration/220520_DOB/{recording_name}/'
+    # base_dir = f'E:/CaImagingAnalysis/Paper_Data/Habituation/{recording_name}/'
     save_dir = f'E:/CaImagingAnalysis/Paper_Data/lif_model/fitting/'
 
     # Load Data
@@ -460,7 +462,7 @@ if __name__ == '__main__':
 
     # Compute delta f over f for recording trace
     df_f, f_rois, fbs = compute_df_over_f(f_raw, window_size=200, per=5, fast=True)
-    roi = 'roi_26'
+    roi = 'roi_24'
     ca_trace_recording = df_f[roi]
     fr_rec = 2.0345147125756804
 
