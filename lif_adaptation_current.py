@@ -209,30 +209,48 @@ def stimulus_single_pulses(pulse_times, pulse_dur, pulse_intensity=1, time_max=3
 
 
 # ----------------------------------------------------------------------------------------------------------------------
-neuron_type = 'sensitizing'
-recording_name = '220525_05_01'
-# stimulation_dir = f'E:/CaImagingAnalysis/Paper_Data/Habituation/{recording_name}/{recording_name}_protocol.csv'
-stimulation_dir = f'E:/CaImagingAnalysis/Paper_Data/Sound/{recording_name}/{recording_name}_protocol.csv'
-stimulus_strength = 1.5
-# ntrials = 20
+# neuron_type = 'sensitizing'
+neuron_type = input('Enter Neuron Type (non_adapting, adapting, sensitizing): ')
+print('')
+
+recording_name = '220414_02_01'
+stimulation_dir = f'E:/CaImagingAnalysis/Paper_Data/Habituation/{recording_name}/{recording_name}_protocol.csv'
+# stimulation_dir = f'E:/CaImagingAnalysis/Paper_Data/Sound/Duration/220520_DOB/{recording_name}/{recording_name}_protocol.csv'
+# stimulation_dir = f'E:/CaImagingAnalysis/Paper_Data/Sound/Habituation/220520_DOB/{recording_name}/{recording_name}_protocol.csv'
+
+stimulus_strength = 2
+
+# Calcium Impulse Response Function Settings
+# cirf_tau_1 = 0.04
+# cirf_tau_2 = 4
+cirf_tau_1 = 0.02
+cirf_tau_2 = 3
 
 # Set Leaky integrate-and-fire settings
 if neuron_type == 'non_adapting':
+    print(f'Selected: {neuron_type}')
+    stimulus_strength = 2
     # Non Adapting Neuron
     model_settings = dict(taum=0.01, vthresh=1, noisedv=0.0001, noiseda=0.0001,
                           alpha_fast=0, taua_fast=0.9,
                           alpha_slow=0, taua_slow=12, slow_dependency=0.5)
 elif neuron_type == 'adapting':
+    print(f'Selected: {neuron_type}')
+    stimulus_strength = 2
     # Adapting Neuron
     model_settings = dict(taum=0.01, vthresh=1, noisedv=0.0001, noiseda=0.0001,
-                          alpha_fast=0.015, taua_fast=1.0,
-                          alpha_slow=0.02, taua_slow=15, slow_dependency=0.04)
+                          alpha_fast=0.02, taua_fast=1.0,
+                          alpha_slow=0.02, taua_slow=18, slow_dependency=0.05)
 elif neuron_type == 'sensitizing':
+    print(f'Selected: {neuron_type}')
+    stimulus_strength = 1.0
     # Sensitizing Neuron
     model_settings = dict(taum=0.01, vthresh=1, noisedv=0.0001, noiseda=0.0001,
-                          alpha_fast=-0.0008, taua_fast=1,
-                          alpha_slow=-0.01, taua_slow=18, slow_dependency=0)
+                          alpha_fast=-0.005, taua_fast=0.5,
+                          alpha_slow=-0.04, taua_slow=10, slow_dependency=0)
 else:
+    print(f'Selected: {neuron_type}')
+    print('Invalid Neuron Type. Set to default')
     model_settings = dict(taum=0.01, vthresh=1, noisedv=0.0001, noiseda=0.0001,
                           alpha_fast=0, taua_fast=0.9,
                           alpha_slow=0, taua_slow=12, slow_dependency=0.5)
@@ -255,8 +273,6 @@ for t_on, t_off in zip(protocol['Onset_Time'], protocol['Offset_Time']):
 # time, stimulus = stimulus_pulse_train(dt=0.001)
 
 # Compute Calcium Impulse Response Function
-cirf_tau_1 = 0.04
-cirf_tau_2 = 4
 # cirf_tau_1 = 0.01
 # cirf_tau_2 = 1.8
 

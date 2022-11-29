@@ -8,8 +8,6 @@ from IPython import embed
 import more_itertools
 from scipy.interpolate import interp1d
 import time as clock
-import pymc as pm
-# import emcee
 
 
 def lif_ode():
@@ -164,21 +162,22 @@ def linear_model(xx, yy, norm=True):
     return f_r_squared, slope
 
 
-def lif_for_fitting(alpha_slow):
+def lif_for_fitting(alpha_slow, alpha_fast, taua_slow, taua_fast, slow_dependency, stimulus_intensity,
+                    cirf_tau_1, cirf_tau_2):
     # The model will take approx. 1 sec to run
     # Get Stimulus
-    stimulus_intensity = 2
+    # stimulus_intensity = 1
     _, stimulus = get_stimulus(stimulation_dir=f'{base_dir}{recording_name}_protocol.csv',
                                stimulus_strength=stimulus_intensity)
 
+    # alpha_fast = 0.1
+    # slow_dependency = 0.5
+    # taua_slow = 15
+    # taua_fast = 0.1
     f_time = time
-    alpha_fast = 0.1
-    slow_dependency = 0.5
     taum = 0.01
-    taua_slow = 15
-    taua_fast = 0.1
-    cirf_tau_1 = 0.1
-    cirf_tau_2 = 8
+    # cirf_tau_1 = 0.1
+    # cirf_tau_2 = 8
     # slow_dependency = 0
     rng = np.random
     noisedv = 0.001
@@ -238,28 +237,12 @@ def lif_for_fitting(alpha_slow):
     return conv_z
 
 
-def model_function(a, tau1, tau2):
-    # y = (1-np.exp(x*a/tau)) + np.exp(x*a/tau)
-    y = a * (1 - np.exp(-(x/tau1)))*np.exp(-(x/tau2))
-    return y
-
-
-def compute_observed_data(a, tau1, tau2):
-    a = a + (np.random.randn() * 0.1)
-    tau1 = tau1 + (np.random.randn() * 0.1)
-    tau2 = tau2 + (np.random.randn() * 0.1)
-    y = model_function(a, tau1, tau2)
-    noise = np.random.randn(len(y)) * 0.01
-    y = y + noise
-    return y, a, tau1, tau2
-
-
 def error_function(param_list):
     # unpack the parameter list
-    alpha_slow = param_list
+    alpha_slow, alpha_fast, taua_slow, taua_fast, slow_dependency, stimulus_intensity = param_list
     # run the model with the new parameters, returning the info we're interested in
     # result = model_function(a, tau1, tau2)
-    result = lif_for_fitting(alpha_slow)
+    result = lif_for_fitting(alpha_slow, alpha_fast, taua_slow, taua_fast, slow_dependency, stimulus_intensity)
 
     # return the sum of the squared errors
     return sum((result - ca_trace_recording) ** 2)
@@ -279,7 +262,7 @@ if __name__ == '__main__':
 
     # Compute delta f over f for recording trace
     df_f, f_rois, fbs = compute_df_over_f(f_raw, window_size=200, per=5, fast=True)
-    roi = 'roi_25'
+    roi = 'roi_7'
     ca_trace_recording = df_f[roi]
     fr_rec = 2.0345147125756804
 
@@ -290,29 +273,62 @@ if __name__ == '__main__':
     # Compute z score
     ca_trace_recording = (ca_trace_recording - np.mean(ca_trace_recording)) / np.std(ca_trace_recording)
 
-    embed()
-    exit()
-    print('STARTING MCMC')
+    # Initial Parameter Distributions
+    param_names = ['a_slow', 'a_fast', 'tau_s', 'tau_f', 'slow_dep']
+    param_alpha_slow = 0.0
+    bounds_alpha_slow = (-2.0, 2.0)
+    param_alpha_fast = 0.0
+    bounds_alpha_fast = (-2.0, 2.0)
+    param_slow_dependency = 0.0
+    bounds_slow_dependency = (-2.0, 2.0)
+    param_taua_fast = 0.01
+    bounds_taua_fast = (0.001, 1.0)
+    param_taua_slow = 10
+    bounds_taua_slow = (2.0, 20.0)
+    param_stimulus_intensity = 1
+    bounds_stimulus_intensity = (1, 5)
+    param_cirf_tau_1 = 0.1
+    bounds_cirf_tau_1 = (0.01, 2)
+    param_cirf_tau_2 = 8
+    bounds_cirf_tau_2 = (1, 16)
+
+    param_list = [param_alpha_slow, param_alpha_fast, param_taua_slow, param_taua_fast, param_slow_dependency,
+                  param_stimulus_intensity, param_cirf_tau_1, param_cirf_tau_2]
+    bounds_list = [bounds_alpha_slow, bounds_alpha_fast, bounds_taua_slow, bounds_taua_fast, bounds_slow_dependency,
+                   bounds_stimulus_intensity, param_cirf_tau_1, param_cirf_tau_2]
+
     # Minimize Error
-    with pm.Model() as model:
-        alpha = pm.Uniform('alpha', lower=0.1, upper=2)
-        ca = pm.Poisson('ca', mu=alpha, observed=ca_trace_recording)
-        trace = pm.sample(10**4)
+    print('STARTING PARAMETER OPTIMIZATION')
+    res = scipy.optimize.minimize(
+        error_function, param_list,
+        method='L-BFGS-B',
+        # method='Nelder-Mead',
+        tol=0.001,
+        bounds=bounds_list,
+        options={'maxiter': 100}
+    )
+
     print('')
+    print(res)
+    print('')
+    model_alpha_slow, model_alpha_fast, model_taua_slow, model_taua_fast, model_slow_dependency, model_stimulus_intensity = res.x
+    model_data = lif_for_fitting(model_alpha_slow, model_alpha_fast, model_taua_slow, model_taua_fast, model_slow_dependency, model_stimulus_intensity)
     print(f'This took: {(clock.perf_counter() - t0)/60} mins')
     print('')
+    print('Optimal Parameters -- Initial Parameters')
+    for kk, pp, nn in zip(res.x, param_list, param_names):
+        print(f'{nn}: {kk} -- {pp}')
+
+
+    # Linear Regression Model
+    r2, slope = linear_model(model_data, ca_trace_recording, norm=False)
+    rmse = np.sqrt(sum((model_data - ca_trace_recording) ** 2) / len(ca_trace_recording))
+
+    print('')
+    print(f'R²: {r2}, slope: {slope}')
+    print(f'RMSE: {rmse}')
     embed()
     exit()
-    # # Linear Regression Model
-    # r2, slope = linear_model(model_data, ca_trace_recording, norm=False)
-    # rmse = np.sqrt(sum((model_data - ca_trace_recording) ** 2) / len(ca_trace_recording))
-    #
-    # print('')
-    # print(f'R²: {r2}, slope: {slope}')
-    # print(f'RMSE: {rmse}')
-    #
-    # plt.plot(time, ca_trace_recording, 'k')
-    # plt.plot(time, model_data, 'r')
-    # plt.show()
-    # embed()
-    # exit()
+    plt.plot(time, ca_trace_recording, 'k')
+    plt.plot(time, model_data, 'r')
+    plt.show()
