@@ -1,34 +1,41 @@
 import numpy as np
-from IPython import embed
 import tifftools
 import os
 import time
 from tkinter.filedialog import askdirectory
 from tkinter import Tk
-import analysis_util_functions as uf
 import pandas as pd
 import sys
+"""
+This Script can be used to do registration of calcium imaging recordings (tiff files) using the algorithms implemented
+in the suite2p package. It will ask you to select a directory that includes only your tiff files. After that it will
+automatically start the registration. If the recording file could be found it will ask you if you would like to do a
+rigid or non-rigid registration.
+If you want you can change the batch size by calling:
+    >> python suite2p_pre_processing.py -500
+
+Note:
+    The file name must include "recording", otherwise it will be ignored!
+
+Default settings:
+    batch size of 300 frames
+    frame rate: 2 Hz
+    300 frames to use to compute reference image for registration
+     
+"""
+
+
+def msg_box(f_header, f_msg, sep, r=30):
+    print(f'{sep * r} {f_header} {sep * r}')
+    print(f'{sep * 2} {f_msg}')
+    print(f'{sep * r}{sep}{sep * len(f_header)}{sep}{sep * r}')
 
 
 def suite2p_registering(rec_path, f_batch_size=300):
     # How to load and read ops.npy files:
     #  np.load(p, allow_pickle=True).item()
-    print('')
-    print('-------- INFO --------')
-    print('WILL IMPORT SUITE2P PACKAGE ... THIS MAY TAKE A FEW SECONDS ...')
-    print('')
-    import suite2p
-    # original_tiff_file_name = 'original.TIF'
-    # stimulus_file_name = 'stimulation.txt'
 
     t0 = time.time()
-    # Check if selected directory is a correct one
-    # dir_control = ['metadata.csv', 'logs', 'original', 'rawdata', 'references', 'stimulation', 'tiffs', 'stacks', 'figs', 'reg']
-    # dir_control = ['metadata.csv', 'original', 'recording', 'stimulation', 'figs', 'reg', 'protocol']
-    # check_dir_structure = uf.check_directory_structure(dir_path=rec_path, dir_control=dir_control)
-    # if not check_dir_structure:
-    #     exit()
-
     # Set directories
     # stimulation_dir = f'{rec_path}/stimulation/'
     # tiff_path = f'{rec_path}/original/'
@@ -36,21 +43,24 @@ def suite2p_registering(rec_path, f_batch_size=300):
     rec_name = os.path.split(rec_dir)[1]
     reg_suite2_path = f'{rec_path}/suite2p/plane0/reg_tif/'
 
-    # Find tiff file and rename it
+    # Find tiff file
+    text_must_be_in_file_name = 'recording'
     file_list = os.listdir(rec_path)
-    tif_file_name = [s for s in file_list if 'recording' in s]
+    tif_file_name = [s for s in file_list if text_must_be_in_file_name in s]
     if len(tif_file_name) > 1:
-        uf.msg_box('WARNING', 'Found more than one tif file!', '+')
+        msg_box('WARNING', 'Found more than one tif file!', '+')
     else:
-        uf.msg_box('INFO', f'Found {tif_file_name}', '+')
+        if tif_file_name:
+            msg_box('INFO', f'Found {tif_file_name}', '+')
+        else:
+            msg_box('ERROR', f'Found no tiff file!', '+')
+            return
 
-    # Check if needed files are there:
-    # Check if needed files are there:
-    # check1 = uf.check_files(file_name=original_tiff_file_name, file_path=tiff_path)
-    # check2 = uf.check_files(file_name=stimulus_file_name, file_path=stimulation_dir)
-    # if not check1 * check2:
-    #     exit()
-
+    print('')
+    print('-------- INFO --------')
+    print('WILL IMPORT SUITE2P PACKAGE ... THIS MAY TAKE A FEW SECONDS ...')
+    print('')
+    import suite2p
     # Load metadata
     # metadata_df = pd.read_csv(f'{rec_path}/metadata.csv')
 
@@ -148,7 +158,11 @@ if __name__ == '__main__':
             batch_size = 300
     else:
         batch_size = 300
-    uf.msg_box('SUITE2P REGISTRATION', 'Please select directory containing one recording (tif) file', '+')
+    msg_box('SUITE2P REGISTRATION', 'Please select directory containing one recording (tif) file\n' 
+                                    'Data file name must include "recording", otherwise it cannot be found', '+')
     Tk().withdraw()  # we don't want a full GUI, so keep the root window from appearing
     rec_dir = askdirectory()
-    suite2p_registering(rec_path=rec_dir, f_batch_size=batch_size)
+    if rec_dir:
+        suite2p_registering(rec_path=rec_dir, f_batch_size=batch_size)
+    else:
+        print('No Directory Selected')

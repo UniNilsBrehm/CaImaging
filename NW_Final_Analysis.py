@@ -357,7 +357,7 @@ def get_tuning_curve_data(data, save_path):
                 '03_allg_ramp_200', '04_allg_ramp_400', '05_allg_ramp_800', '06_allg_ramp_1600']
 
     for kk, vv in enumerate(f_tags):
-        f_cell_trials, f_cell_means = get_trials_for_cells(f_data=data, f_tags=f_tags[kk])
+        f_cell_trials, f_cell_means = get_trials_for_cells(f_data=data, f_tags=f_tags[kk], f_window=cut_window)
         f_cell_means = pd.DataFrame(f_cell_means)
         if drop_list:
             for col_name in drop_list:
@@ -374,7 +374,7 @@ def get_tuning_curve_data(data, save_path):
 
 def find_tg_sub_types(data, save_path, sub_th=0.5):
     f_tag = {'stimulus_onset_type': '=="Ramp"', 'anatomy': '=="tg"'}
-    f_cell_trials, f_cell_means = get_trials_for_cells(f_data=data, f_tags=f_tag)
+    f_cell_trials, f_cell_means = get_trials_for_cells(f_data=data, f_tags=f_tag, f_window=cut_window)
     f_cell_means = pd.DataFrame(f_cell_means)
     max_response = f_cell_means.iloc[10:20, :].mean()
     idx_sub = max_response >= sub_th
@@ -395,13 +395,12 @@ def get_data_water_flow():
 
 # Select Data File
 # file_dir = uf.select_file([('CSV Files', '.csv')])
-# file_dir = 'E:/CaImagingAnalysis/Paper_Data/NilsWenke/recordings/data_frame_complete.csv'
-file_dir = 'E:/CaImagingAnalysis/Paper_Data/Sound/Habituation/data_frame_complete.csv'
-save_dir = 'E:/CaImagingAnalysis/Paper_Data/Figures/fig_4/data'
+file_dir = 'E:/CaImagingAnalysis/Paper_Data/NilsWenke/recordings/data_frame_complete.csv'
+# file_dir = 'E:/CaImagingAnalysis/Paper_Data/Sound/Habituation/data_frame_complete.csv'
+save_dir = 'E:/CaImagingAnalysis/Paper_Data/Figures/fig_3/data'
 
-get_data_water_flow()
-exit()
-# df = pd.read_csv(file_dir, index_col=0, low_memory=False).reset_index(drop=True)
+# get_data_water_flow()
+df = pd.read_csv(file_dir, index_col=0, low_memory=False).reset_index(drop=True)
 
 # df_audio_cells = pd.read_csv('E:/CaImagingAnalysis/Paper_Data/NilsWenke/TappingAuditoryCells/data_frame_complete.csv',
 #                              index_col=0).reset_index(drop=True)
@@ -412,15 +411,16 @@ th_score = 0.1
 
 # sound_get_data_for_matrix_plots(df, save_path=save_dir, f_all_windows=[[1, 15], [1, 4], [5, 200]])
 # get_selected_traces(df, save_dir, protocol_template=pd.read_csv(f'{save_dir}/220525_04_01_protocol.csv', index_col=0))
-exit()
 
 #
 # # --------------------------------------------------------------------------------------------------------------------
 # # Get Tuning Curve Data
-# find_tg_sub_types(data=df, save_path='E:/CaImagingAnalysis/Paper_Data/Figures/fig_3/data', sub_th=0.5)
-# exit()
-# get_tuning_curve_data(data=df, save_path='E:/CaImagingAnalysis/Paper_Data/Figures/fig_3/data')
-#
+sub_th = 0.5
+cut_window = [before, after]
+find_tg_sub_types(data=df, save_path='E:/CaImagingAnalysis/Paper_Data/Figures/fig_3/test_data', sub_th=sub_th)
+get_tuning_curve_data(data=df, save_path='E:/CaImagingAnalysis/Paper_Data/Figures/fig_3/test_data')
+exit()
+
 # exit()
 # # Get Data for Example Single Traces
 # get_example_traces(data=[df, df_audio_cells],
