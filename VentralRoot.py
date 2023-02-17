@@ -25,6 +25,7 @@ def convert_to_secs(data, method=0):
         s = str(data)
         in_secs = int(s[:2]) * 3600 + int(s[2:4]) * 60 + float(s[4:])
     elif method == 1:
+        # INPUT: hh:mm:ss
         s = data
         in_secs = int(s[:2]) * 3600 + int(s[3:5]) * 60 + float(s[6:])
     else:
@@ -111,8 +112,8 @@ def ventral_root_stimulation():
     file_list = os.listdir(base_dir)
     meta_data_file_name = [s for s in file_list if 'meta_data.csv' in s][0]
     meta_data = pd.read_csv(f'{base_dir}/{meta_data_file_name}')
-    time_zero = meta_data['vr_rec_start'].item()
-    rec_duration = meta_data['vr_rec_end'].item() - time_zero
+    time_zero = float(meta_data[meta_data['parameter'] == 'rec_vr_start']['value'].item())
+    rec_duration = float(meta_data[meta_data['parameter'] == 'rec_vr_duration']['value'].item())
 
     file_list = os.listdir(stimulus_data_dir)
     # vr_files = [s for s in file_list if "ephys" in s]
@@ -125,34 +126,104 @@ def ventral_root_stimulation():
     for stim_name in idx:
         # MOVING TARGET SMALL
         if stim_name == 'movingtargetsmall':
-            # get start and end time
-            s = stimulus[stim_name][3].iloc[0][11:]
-            e = stimulus[stim_name][3].iloc[-1][11:]
-            start_sec = convert_to_secs(s, method=1) - time_zero
-            end_sec = convert_to_secs(e, method=1) - time_zero
+            # convert all timestamps to secs
+            t_secs = []
+            for i in range(stimulus[stim_name].shape[0]):
+                t_secs.append(convert_to_secs(stimulus[stim_name][3].iloc[i][11:], method=1) - time_zero)
+            t_secs = np.array(t_secs)
+
+            # Get start and end times of the trials (via the large pause in between)
+            d = np.diff(t_secs, append=0)
+            idx = np.where(d > 15)
+            trial_start = [t_secs[0]]
+            trial_end = []
+            for i in idx[0]:
+                trial_end.append(t_secs[i])
+                trial_start.append(t_secs[i+1])
+            trial_end.append(t_secs[-1])
+
+            # # get start and end time
+            # s = stimulus[stim_name][3].iloc[0][11:]
+            # e = stimulus[stim_name][3].iloc[-1][11:]
+            # start_sec = convert_to_secs(s, method=1) - time_zero
+            # end_sec = convert_to_secs(e, method=1) - time_zero
             # stimulus_df[stim_name] = [start_sec, end_sec]
-            stimulus_df = pd.concat([stimulus_df, pd.Series([start_sec, end_sec, stim_name]).to_frame().T], ignore_index=True)
+            # stimulus_df = pd.concat([stimulus_df, pd.Series([start_sec, end_sec, stim_name]).to_frame().T], ignore_index=True)
+
+            val = 1
+            cc = 0
+            for s, e in zip(trial_start, trial_end):
+                stimulus_df = pd.concat([stimulus_df, pd.Series([s, e, val, f'{stim_name}_{cc}']).to_frame().T], ignore_index=True)
+                cc += 1
 
         if stim_name == 'movingtargetlarge':
-            # get start and end time
-            s = stimulus[stim_name][3].iloc[0][11:]
-            e = stimulus[stim_name][3].iloc[-1][11:]
-            start_sec = convert_to_secs(s, method=1) - time_zero
-            end_sec = convert_to_secs(e, method=1) - time_zero
-            stimulus_df = pd.concat([stimulus_df, pd.Series([start_sec, end_sec, stim_name]).to_frame().T], ignore_index=True)
+            # convert all timestamps to secs
+            t_secs = []
+            for i in range(stimulus[stim_name].shape[0]):
+                t_secs.append(convert_to_secs(stimulus[stim_name][3].iloc[i][11:], method=1) - time_zero)
+            t_secs = np.array(t_secs)
+
+            # Get start and end times of the trials (via the large pause in between)
+            d = np.diff(t_secs, append=0)
+            idx = np.where(d > 15)
+            trial_start = [t_secs[0]]
+            trial_end = []
+            for i in idx[0]:
+                trial_end.append(t_secs[i])
+                trial_start.append(t_secs[i+1])
+            trial_end.append(t_secs[-1])
+
+            val = 2
+            cc = 0
+            for s, e in zip(trial_start, trial_end):
+                stimulus_df = pd.concat([stimulus_df, pd.Series([s, e, val, f'{stim_name}_{cc}']).to_frame().T], ignore_index=True)
+                cc += 1
+
+        # if stim_name == 'movingtargetlarge':
+        #     # get start and end time
+        #     s = stimulus[stim_name][3].iloc[0][11:]
+        #     e = stimulus[stim_name][3].iloc[-1][11:]
+        #     start_sec = convert_to_secs(s, method=1) - time_zero
+        #     end_sec = convert_to_secs(e, method=1) - time_zero
+        #     stimulus_df = pd.concat([stimulus_df, pd.Series([start_sec, end_sec, stim_name]).to_frame().T], ignore_index=True)
 
         if stim_name == 'flash':
+            # convert all timestamps to secs
+            t_secs = []
+            for i in range(stimulus[stim_name].shape[0]):
+                t_secs.append(convert_to_secs(stimulus[stim_name][1].iloc[i][11:], method=1) - time_zero)
+
+            # t_secs = np.array(t_secs)
+            t_secs = t_secs[3:]
+            flash_dur = 4  # secs
+            # The first entry is time when light turns on, then it turns off, then on etc.
+            light_on_off = t_secs[::2]
+            light_on_off.append(t_secs[-1])
+            cc = 1
+            for i in light_on_off:
+                if (cc % 2) == 0:
+                    state = 'OFF'
+                    val = -1
+                else:
+                    state = 'ON'
+                    val = 1
+                stimulus_df = pd.concat([stimulus_df, pd.Series([i, i+flash_dur, val, f'{stim_name}_light_{state}']).to_frame().T],
+                                        ignore_index=True)
+                cc += 1
+
             # Somehow the first timestamp entry seems to be off... so take the second
-            s = stimulus[stim_name][1].iloc[1][11:]
-            e = stimulus[stim_name][1].iloc[-1][11:]
-            start_sec = convert_to_secs(s, method=1) - time_zero
-            end_sec = convert_to_secs(e, method=1) - time_zero
-            stimulus_df = pd.concat([stimulus_df, pd.Series([start_sec, end_sec, stim_name]).to_frame().T], ignore_index=True)
+            # s = stimulus[stim_name][1].iloc[1][11:]
+            # e = stimulus[stim_name][1].iloc[-1][11:]
+            # start_sec = convert_to_secs(s, method=1) - time_zero
+            # end_sec = convert_to_secs(e, method=1) - time_zero
+            # stimulus_df = pd.concat([stimulus_df, pd.Series([start_sec, end_sec, stim_name]).to_frame().T], ignore_index=True)
 
         if stim_name == 'grating':
             orientation = [0, 90, 180, 270]
+            vals = [0.25, 0.5, 0.75, 1.0]
             # start_sec = []
             # end_sec = []
+            cc = 0
             for o in orientation:
                 idx_o = stimulus[stim_name].iloc[:, 1] == o
                 s = stimulus[stim_name][idx_o][2].iloc[0][11:]
@@ -160,23 +231,26 @@ def ventral_root_stimulation():
                 start_sec = convert_to_secs(s, method=1) - time_zero
                 e = stimulus[stim_name][idx_o][2].iloc[-1][11:]
                 end_sec = convert_to_secs(e, method=1) - time_zero
-                stimulus_df = pd.concat([stimulus_df, pd.Series([start_sec, end_sec, f'{stim_name}_{o}']).to_frame().T], ignore_index=True)
+                stimulus_df = pd.concat([stimulus_df, pd.Series([start_sec, end_sec, vals[cc], f'{stim_name}_{o}']).to_frame().T], ignore_index=True)
+                cc += 1
 
         if stim_name == 'looming':
+            val = 1
             s = stimulus[stim_name][3].iloc[0][11:]
             e = stimulus[stim_name][3].iloc[-1][11:]
             start_sec = convert_to_secs(s, method=1) - time_zero
             end_sec = convert_to_secs(e, method=1) - time_zero
-            stimulus_df = pd.concat([stimulus_df, pd.Series([start_sec, end_sec, stim_name]).to_frame().T], ignore_index=True)
+            stimulus_df = pd.concat([stimulus_df, pd.Series([start_sec, end_sec, val, stim_name]).to_frame().T], ignore_index=True)
 
         if stim_name == 'looming_rev':
+            val = -1
             s = stimulus[stim_name][3].iloc[0][11:]
             e = stimulus[stim_name][3].iloc[-1][11:]
             start_sec = convert_to_secs(s, method=1) - time_zero
             end_sec = convert_to_secs(e, method=1) - time_zero
-            stimulus_df = pd.concat([stimulus_df, pd.Series([start_sec, end_sec, stim_name]).to_frame().T], ignore_index=True)
+            stimulus_df = pd.concat([stimulus_df, pd.Series([start_sec, end_sec, val, stim_name]).to_frame().T], ignore_index=True)
 
-    stimulus_df.columns = ['start', 'end', 'stimulus']
+    stimulus_df.columns = ['start', 'end', 'value', 'stimulus']
     stimulus_df_sorted = stimulus_df.sort_values(by=['start'])
     print(stimulus_df_sorted)
 
@@ -186,7 +260,8 @@ def ventral_root_stimulation():
     rect_sig = np.zeros_like(time_axis)
     for k in range(stimulus_df_sorted.shape[0]):
         idx = (time_axis >= stimulus_df_sorted.iloc[k, :]['start']) & (time_axis < stimulus_df_sorted.iloc[k, :]['end'])
-        rect_sig[idx] = 1
+        rect_sig[idx] = stimulus_df_sorted.iloc[k, :]['value']
+    rect_sig = rect_sig + 1
     # Store stimulus trace to HDD
     stimulus_trace = pd.DataFrame()
     stimulus_trace['Time'] = time_axis
@@ -201,6 +276,8 @@ def get_meta_data():
     olympus_setup_delay = 0.680  # Ahsan's Value
     time_stamp_key = '[Acquisition Parameters Common] ImageCaputreDate'
     time_stamp_key_ms = '[Acquisition Parameters Common] ImageCaputreDate+MilliSec'
+    rec_duration_key = 'Time Per Series'
+    rec_dt_key = 'Time Per Frame'
     Tk().withdraw()
     file_dir = askdirectory()
     img_rec_meta_data_file = [s for s in os.listdir(file_dir) if 'recording_file_metadata' in s][0]
@@ -210,6 +287,9 @@ def get_meta_data():
     time_stamp = rec_meta_data[rec_meta_data['Key'] == time_stamp_key]['Value'].values[0][12:-1]
     time_stamp_ms = rec_meta_data[rec_meta_data['Key'] == time_stamp_key_ms]['Value'].values[0]
     img_rec_start = int(time_stamp[:2]) * 3600 + int(time_stamp[3:5]) * 60 + int(time_stamp[6:]) + int(time_stamp_ms)/1000
+    img_rec_duration = float(rec_meta_data[rec_meta_data['Key'] == rec_duration_key]['Value'].item()) / (1000*1000)
+    img_rec_dt = float(rec_meta_data[rec_meta_data['Key'] == rec_dt_key]['Value'].item()) / (1000*1000)
+    img_rec_fr = 1/img_rec_dt
 
     raw_data_dir = f'{file_dir}/rawdata'
     file_list = os.listdir(raw_data_dir)
@@ -223,11 +303,18 @@ def get_meta_data():
     print(f'VR RECORDING DURATION: {vr_end-vr_start:.3f} secs')
 
     # Meta Data File
-    meta_data = pd.DataFrame()
-    meta_data['rec_id'] = [rec_name]
-    meta_data['img_rec_start'] = [img_rec_start + olympus_setup_delay]
-    meta_data['vr_rec_start'] = [vr_start]
-    meta_data['vr_rec_end'] = [vr_end]
+    parameters_dict = {
+        'rec_id': rec_name,
+        'rec_img_start': img_rec_start,
+        'rec_img_start_plus_delay': img_rec_start + olympus_setup_delay,
+        'rec_img_duration': img_rec_duration,
+        'rec_img_dt': img_rec_dt,
+        'rec_img_fr': img_rec_fr,
+        'rec_vr_start': vr_start,
+        'rec_vr_end': vr_end,
+        'rec_vr_duration': vr_end-vr_start
+    }
+    meta_data = pd.DataFrame(list(parameters_dict.items()), columns=['parameter', 'value'])
     meta_data.to_csv(f'{file_dir}/{rec_name}_meta_data.csv')
     print('Meta Data stored to HDD')
 
