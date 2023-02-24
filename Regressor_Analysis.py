@@ -11,6 +11,30 @@ import scipy.signal as sig
 from sklearn.linear_model import LinearRegression
 
 
+def z_transform(data):
+    result = (data - np.mean(data)) / np.std(data)
+    return result
+
+
+def moving_average_filter(data, window):
+    return np.convolve(data, np.ones(window) / window, mode='same')
+
+
+def envelope(data, rate, freq=100.0):
+    # Low pass filter the absolute values of the signal in both forward and reverse directions,
+    # resulting in zero-phase filtering.
+    sos = sig.butter(2, freq, 'lowpass', fs=rate, output='sos')
+    filtered = sig.sosfiltfilt(sos, data)
+    env = np.sqrt(2)*sig.sosfiltfilt(sos, np.abs(data))
+    return filtered, env
+
+
+def low_pass_filter(data, rate, freq=100.0):
+    sos = sig.butter(2, freq, 'lowpass', fs=rate, output='sos')
+    filtered = sig.sosfiltfilt(sos, data)
+    return filtered
+
+
 def apply_linear_model(xx, yy, norm_reg=True):
     # Normalize data to [0, 1]
     if norm_reg:
@@ -311,6 +335,7 @@ def cut_out_responses():
     pad_before = 10
     pad_after = 20
     ca_dynamics_rise = 0
+    shifting_limit = 10
 
     Tk().withdraw()
     base_dir = askdirectory()
@@ -325,65 +350,183 @@ def cut_out_responses():
     ca_rec = pd.read_csv(f'{base_dir}/{ca_rec_file_name}', index_col=0)
     ca_recording_fr = float(meta_data[meta_data['parameter'] == 'rec_img_fr']['value'])
 
+    # Convert all parameters from secs to samples
     pad_before_samples = int(ca_recording_fr * pad_before)
     pad_after_samples = int(ca_recording_fr * pad_after)
     ca_dynamics_rise_samples = int(ca_recording_fr * ca_dynamics_rise)
+    shifting_limit_samples = int(ca_recording_fr * shifting_limit)
 
     # Get unique stimulus types
     s_types = protocol['stimulus_type'].unique()
-    for s in s_types:
-        p = protocol[protocol['stimulus_type'] == s]
-        cc = []
-        for k in range(p.shape[0]):
-            start = p.iloc[k]['start_idx'] - pad_before_samples
-            end = p.iloc[k]['end_idx'] + pad_after_samples
-            single_stimulus_reg = regs[p['stimulus']].iloc[:, k].to_numpy()[start:end]
-            ca_rec_cut_out = ca_rec.iloc[start:end].reset_index(drop=True)
-            cc.append(ca_rec_cut_out)
-            ca_trace = ca_rec_cut_out['Mean24'].to_numpy()
-            ca_trace = ca_trace / np.max(ca_trace)
 
-            # Create regressor
-            binary = np.zeros_like(ca_trace)
-            binary[pad_before_samples:len(binary)-pad_after_samples] = 1
-            cif = create_cif_double_tau(ca_recording_fr, tau1=0.5, tau2=2.0)
-            reg = np.convolve(binary, cif, 'full')
-            reg = reg / np.max(reg)
-            # ca_trace = reg + 0.4 * np.random.randn(len(reg))
-            conv_pad = (len(reg) - len(ca_trace))
-            reg_same = reg[:-conv_pad]
+    # Loop through all ROIs (cols of the ca recording data frame)
+    roi_scores = dict()
+    result_list = []
+    for roi_name in ca_rec:
+        stimulus_type_scores = dict()
+        # Loop through stimulus types (e.g. "movingtargetsmall")
+        for s in s_types:
+            # Get stimulus type
+            p = protocol[protocol['stimulus_type'] == s]
+            cc = []
+            for k in range(p.shape[0]):
+                # Get stimulus id (name)
+                stimulus_id = p.iloc[k]['stimulus']
+                stimulus_type = p.iloc[k]['stimulus_type']
+                stimulus_trial = p.iloc[k]['trial']
 
-            cross_corr_func = sig.correlate(ca_trace, reg, mode='full')
-            lags = sig.correlation_lags(len(ca_trace), len(reg))
-            cross_corr_optimal_lag = lags[np.where(cross_corr_func == np.max(cross_corr_func))[0][0]]
+                start = p.iloc[k]['start_idx'] - pad_before_samples
+                end = p.iloc[k]['end_idx'] + pad_after_samples
+                # single_stimulus_reg = regs[p['stimulus']].iloc[:, k].to_numpy()[start:end]
+                ca_rec_cut_out = ca_rec.iloc[start:end].reset_index(drop=True)
+                cc.append(ca_rec_cut_out)
+                ca_trace = ca_rec_cut_out[roi_name].to_numpy()
+                # Normalize (raw) trace to max = 1: For the final version there should be the delta f over f values
+                ca_trace = ca_trace / np.max(ca_trace)
 
-            # the response should not be before the stimulus:
-            if cross_corr_optimal_lag < 0:
-                cross_corr_optimal_lag = 0
+                # Create the Regressor on the fly
+                binary = np.zeros_like(ca_trace)
+                binary[pad_before_samples:len(binary)-pad_after_samples] = 1
+                cif = create_cif_double_tau(ca_recording_fr, tau1=0.5, tau2=2.0)
+                reg = np.convolve(binary, cif, 'full')
+                reg = reg / np.max(reg)
+                # ca_trace = reg + 0.4 * np.random.randn(len(reg))
+                conv_pad = (len(reg) - len(ca_trace))
+                # reg_same = reg[:-conv_pad]
 
-            # Consider Ca Rise Time
-            cross_corr_optimal_lag = (cross_corr_optimal_lag - ca_dynamics_rise_samples)
+                cross_corr_func = sig.correlate(ca_trace, reg, mode='full')
+                lags = sig.correlation_lags(len(ca_trace), len(reg))
+                # Get the lag time for the maximum cross corr value (in samples)
+                cross_corr_optimal_lag = lags[np.where(cross_corr_func == np.max(cross_corr_func))[0][0]]
 
-            # Create regressor with optimal lag
-            binary_optimal = np.zeros_like(ca_trace)
-            binary_optimal[pad_before_samples + cross_corr_optimal_lag:len(binary_optimal) - pad_after_samples + cross_corr_optimal_lag] = 1
-            reg_optimal = np.convolve(binary_optimal, cif, 'full')
-            reg_optimal = reg_optimal / np.max(reg_optimal)
-            conv_pad = (len(reg_optimal) - len(ca_trace))
-            reg_same = reg_optimal[:-conv_pad]
+                # the response should not be before the stimulus and not too long after stimulus onset:
+                if cross_corr_optimal_lag < 0:
+                    cross_corr_optimal_lag = 0
+                if cross_corr_optimal_lag > shifting_limit_samples:
+                    cross_corr_optimal_lag = shifting_limit_samples
 
-            # Use Linear Regression Model to compute a Score
-            sc, rr, aa = apply_linear_model(xx=reg_same, yy=ca_trace, norm_reg=True)
-            print(f"{p.iloc[k]['stimulus']} Score: {sc:.3f} -- lag: {cross_corr_optimal_lag/ca_recording_fr:.3f} s")
+                # Consider Ca Rise Time
+                cross_corr_optimal_lag = (cross_corr_optimal_lag - ca_dynamics_rise_samples)
 
-            plt.plot(binary, 'b--')
-            plt.plot(binary_optimal, 'r--')
-            plt.plot(reg, 'b')
-            plt.plot(reg_optimal, 'r')
-            plt.plot(ca_trace, 'k')
-            plt.plot(reg_same, 'y--')
-            # plt.plot(cross_corr_func/np.max(cross_corr_func), 'g')
-            plt.show()
+                # Create regressor with optimal lag
+                binary_optimal = np.zeros_like(ca_trace)
+                binary_optimal[pad_before_samples + cross_corr_optimal_lag:len(binary_optimal) - pad_after_samples + cross_corr_optimal_lag] = 1
+                reg_optimal = np.convolve(binary_optimal, cif, 'full')
+                reg_optimal = reg_optimal / np.max(reg_optimal)
+                conv_pad = (len(reg_optimal) - len(ca_trace))
+                reg_same = reg_optimal[:-conv_pad]
+
+                # Use Linear Regression Model to compute a Score
+                sc, rr, aa = apply_linear_model(xx=reg_same, yy=ca_trace, norm_reg=True)
+                msg = f"{roi_name}-{stimulus_id}: {sc:.3f}/{cross_corr_optimal_lag/ca_recording_fr:.3f} s"
+                print(msg)
+
+                # Prepare data frame entry
+                cross_corr_optimal_lag_secs = cross_corr_optimal_lag / ca_recording_fr
+                entry = [roi_name, stimulus_id, stimulus_type, stimulus_trial, sc, cross_corr_optimal_lag_secs]
+                result_list.append(entry)
+
+                # # Test Plot
+                # plt.figure()
+                # plt.title(msg)
+                # plt.plot(binary, 'b--')
+                # plt.plot(binary_optimal, 'r--')
+                # plt.plot(reg, 'b')
+                # plt.plot(reg_optimal, 'r')
+                # plt.plot(ca_trace, 'k')
+                # plt.plot(reg_same, 'y--')
+                # # plt.plot(cross_corr_func/np.max(cross_corr_func), 'g')
+                # plt.show()
+                #
+                # Collect Results for this stimulus type
+                stimulus_type_scores[stimulus_id] = [sc, cross_corr_optimal_lag_secs]
+        roi_scores[roi_name] = stimulus_type_scores
+    # Put all results into one data frame (long format)
+    results = pd.DataFrame(result_list, columns=['roi', 'stimulus_id', 'stimulus_type', 'trial', 'score', 'lag'])
+    results.to_csv(f'{base_dir}/linear_model_stimulus_scoring.csv', index=False)
+    print('Linear Model Scoring Results Stored to HDD!')
+
+
+def transform_ventral_root_recording():
+    Tk().withdraw()
+    base_dir = askdirectory()
+    raw_data_dir = f'{base_dir}/rawdata'
+    file_list = os.listdir(raw_data_dir)
+    vr_files = [s for s in file_list if "ephys" in s]
+    vr_files = list(np.sort(vr_files))
+    # Load files
+    vr_data = []
+    vr_time_secs = []
+    for f_name in vr_files:
+        print(f_name)
+        dummy = pd.read_csv(f'{raw_data_dir}/{f_name}', sep='\t', header=None)
+        vr_data.append(dummy)
+        for i, v in enumerate(dummy.iloc[:, 3].to_numpy()):
+            s = convert_to_secs(v)
+            vr_time_secs.append(s)
+
+    # Reset time so that it starts at 0
+    vr_time_secs = np.array(vr_time_secs)
+    vr_time_secs = vr_time_secs - vr_time_secs[0]
+
+    # Concat all to one data frame
+    vr_trace = pd.concat(vr_data).iloc[:, 0]
+
+    # Put all in one Data Frame
+    vr_trace_export = pd.DataFrame(columns=['Time', 'Volt'])
+    # Add the time in secs (not the timestamps)
+    vr_trace_export['Time'] = vr_time_secs
+    vr_trace_export['Volt'] = vr_trace.to_numpy()
+
+    # Compute Envelope of VR Trace
+    vr_fr = 10000
+    vr_fil, vr_env = envelope(vr_trace_export['Volt'], vr_fr, freq=20.0)
+    vr_env_export = pd.DataFrame(columns=['Time', 'Volt'])
+    vr_env_export['Time'] = vr_trace_export['Time']
+    vr_env_export['Volt'] = vr_env
+
+    # Down-sample ventral root recording
+    ds_factor = 64
+    vr_trace_export_ds = vr_trace_export[::ds_factor]
+    vr_env_export_ds = vr_env_export[::ds_factor]
+
+    # Export to HDD
+    vr_trace_export_ds.to_csv(f'{base_dir}/ventral_root_trace.csv', index=False)
+    vr_env_export.to_csv(f'{base_dir}/ventral_root_envelope.csv', index=False)
+
+
+def ventral_root_detection():
+    Tk().withdraw()
+    base_dir = askdirectory()
+    file_list = os.listdir(base_dir)
+    vr_trace_file = [s for s in file_list if "ventral_root_trace" in s][0]
+    vr_env_file = [s for s in file_list if "ventral_root_envelope" in s][0]
+    vr_trace = pd.read_csv(f'{base_dir}/{vr_trace_file}')
+    vr_env = pd.read_csv(f'{base_dir}/{vr_env_file}')
+    # diff = np.diff(vr_env['Volt'], append=0)
+    # diff[diff < -0.2] = 0
+    org_trace = vr_trace['Volt']
+    org = vr_env['Volt'] / np.max(vr_env['Volt'])
+    org_fil = moving_average_filter(org, window=1000)
+    vr_z = z_transform(org_fil)
+
+    test = org ** 2
+    test = test / np.max(test)
+
+    # Create Binary
+    th = 2  # threshold in SDs
+    # th = low_pass_filter(vr_z, rate=1000, freq=300)
+    binary = np.zeros_like(vr_z)
+    binary[vr_z > th] = 1
+
+    plt.plot(vr_trace['Time'], z_transform(org_trace), 'k', alpha=0.6)
+    plt.plot(vr_env['Time'], vr_z, 'b', lw=1.5)
+    # plt.plot(vr_env['Time'], z_transform(test), 'r')
+    plt.plot(vr_env['Time'], binary * th, 'g', lw=1.5)
+    plt.show()
+
+    embed()
+    exit()
 
 
 if __name__ == '__main__':
@@ -391,10 +534,12 @@ if __name__ == '__main__':
     print('Type in the number of the function you want to use')
     print('')
     print('0: Export Meta data')
-    print('1: Export Stimulus Protocol')
-    print('2: Export Stimulus Binaries')
-    print('3: Export Regressors')
-    print('4: Export CutOuts')
+    print('1: Convert Ventral Root Recording')
+    print('2: Export Stimulus Protocol')
+    print('3: Export Stimulus Binaries')
+    print('4: Export Regressors')
+    print('5: Export CutOuts')
+    print('6: Ventral Root Activity Detection')
     print('')
     print('To exit type: >> exit')
     x = True
@@ -404,12 +549,16 @@ if __name__ == '__main__':
         if usr == '0':
             get_meta_data()
         elif usr == '1':
-            visual_stimulation()
+            transform_ventral_root_recording()
         elif usr == '2':
-            export_binaries()
+            visual_stimulation()
         elif usr == '3':
-            create_regressors()
+            export_binaries()
         elif usr == '4':
+            create_regressors()
+        elif usr == '5':
             cut_out_responses()
+        elif usr == '6':
+            ventral_root_detection()
         elif usr == 'exit':
             exit()
