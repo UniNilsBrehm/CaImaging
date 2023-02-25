@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 import os
+import time
 import matplotlib.pyplot as plt
 from tkinter.filedialog import askdirectory
 from tkinter.filedialog import askopenfile
@@ -9,6 +10,18 @@ from IPython import embed
 from scipy.signal import hilbert
 import scipy.signal as sig
 from sklearn.linear_model import LinearRegression
+
+
+def delta_f_over_f(data, p):
+    fbs = np.percentile(data, p, axis=0)
+    df = (data - fbs) / fbs
+    return df
+
+
+def msg_box(f_header, f_msg, sep, r=30):
+    print(f'{sep * r} {f_header} {sep * r}')
+    print(f'{sep * 2} {f_msg}')
+    print(f'{sep * r}{sep}{sep * len(f_header)}{sep}{sep * r}')
 
 
 def z_transform(data):
@@ -84,6 +97,7 @@ def convert_to_secs(data, method=0):
 
 
 def visual_stimulation():
+    msg_box('VISUAL STIMULATION', 'STARTING TO GET ALL VISUAL STIMULATION FILES', sep='-')
     Tk().withdraw()
     base_dir = askdirectory()
     stimulus_data_dir = f'{base_dir}/stimulation'
@@ -93,7 +107,7 @@ def visual_stimulation():
     meta_data_file_name = [s for s in file_list if 'meta_data.csv' in s][0]
     meta_data = pd.read_csv(f'{base_dir}/{meta_data_file_name}')
     time_zero = float(meta_data[meta_data['parameter'] == 'rec_vr_start']['value'].item())
-    rec_duration = float(meta_data[meta_data['parameter'] == 'rec_vr_duration']['value'].item())
+    # rec_duration = float(meta_data[meta_data['parameter'] == 'rec_vr_duration']['value'].item())
 
     file_list = os.listdir(stimulus_data_dir)
     # vr_files = [s for s in file_list if "ephys" in s]
@@ -122,7 +136,7 @@ def visual_stimulation():
                 trial_start.append(t_secs[i+1])
             trial_end.append(t_secs[-1])
             val = 1
-            cc = 0
+            cc = 1
             for s, e in zip(trial_start, trial_end):
                 stimulus_df = pd.concat([stimulus_df, pd.Series([s, e, val, f'{stim_name}_{cc}', stim_name, cc]).to_frame().T], ignore_index=True)
                 cc += 1
@@ -145,7 +159,7 @@ def visual_stimulation():
             trial_end.append(t_secs[-1])
 
             val = 2
-            cc = 0
+            cc = 1
             for s, e in zip(trial_start, trial_end):
                 stimulus_df = pd.concat([stimulus_df, pd.Series([s, e, val, f'{stim_name}_{cc}', stim_name, cc]).to_frame().T], ignore_index=True)
                 cc += 1
@@ -163,15 +177,24 @@ def visual_stimulation():
             light_on_off = t_secs[::2]
             light_on_off.append(t_secs[-1])
             cc = 1
+            cc_on = 0
+            cc_off = 0
             for i in light_on_off:
                 if (cc % 2) == 0:
                     state = 'OFF'
+                    cc_off += 1
                     val = -1
+                    cc_trial = cc_off
                 else:
                     state = 'ON'
+                    cc_on += 1
                     val = 1
-                stimulus_df = pd.concat([stimulus_df, pd.Series([i, i+flash_dur, val, f'{stim_name}_light_{state}', stim_name, state]).to_frame().T],
-                                        ignore_index=True)
+                    cc_trial = cc_on
+                stimulus_df = pd.concat(
+                    [stimulus_df,
+                     pd.Series(
+                         [i, i+flash_dur, val, f'{stim_name}_light_{cc_trial}_{state}', f'{stim_name}_{state}', cc_trial]).to_frame().T],
+                    ignore_index=True)
                 cc += 1
 
         if stim_name == 'grating':
@@ -236,6 +259,7 @@ def create_binary(stimulus_protocol, ca_fr, ca_duration):
 
 
 def get_meta_data():
+    msg_box('GET META DATA', 'STARTING TO GET META DATA', sep='-')
     olympus_setup_delay = 0.680  # Ahsan's Value
     time_stamp_key = '[Acquisition Parameters Common] ImageCaputreDate'
     time_stamp_key_ms = '[Acquisition Parameters Common] ImageCaputreDate+MilliSec'
@@ -258,6 +282,12 @@ def get_meta_data():
     file_list = os.listdir(raw_data_dir)
     # Get first time stamp of first vr file
     vr_files = [s for s in file_list if "ephys" in s]
+    vr_files = list(np.sort(vr_files))
+    print('FOUND FOLLOWING VENTRAL ROOT RECORDING FILES (sorted):')
+    for i in vr_files:
+        print(i)
+    print('')
+
     vr_first = pd.read_csv(f'{raw_data_dir}/{vr_files[0]}', sep='\t', header=None)
     vr_last = pd.read_csv(f'{raw_data_dir}/{vr_files[-1]}', sep='\t', header=None)
 
@@ -280,6 +310,7 @@ def get_meta_data():
     meta_data = pd.DataFrame(list(parameters_dict.items()), columns=['parameter', 'value'])
     meta_data.to_csv(f'{file_dir}/{rec_name}_meta_data.csv')
     print('Meta Data stored to HDD')
+    print('')
 
 
 def create_cif_double_tau(fr, tau1, tau2, a=1, t_max_factor=10):
@@ -296,6 +327,7 @@ def create_cif_double_tau(fr, tau1, tau2, a=1, t_max_factor=10):
 
 
 def create_regressors():
+    msg_box('CREATE REGRESSORS', 'STARTING TO COMPUTE STIMULUS REGRESSORS', sep='-')
     Tk().withdraw()
     base_dir = askdirectory()
     meta_data_file_name = [s for s in os.listdir(base_dir) if 'meta_data.csv' in s][0]
@@ -312,9 +344,11 @@ def create_regressors():
     for k in range(binaries.shape[1]):
         regs[binaries.keys()[k]] = np.convolve(binaries.iloc[:, k], ca_impulse_response_function, 'full')
     pd.DataFrame(regs).to_csv(f'{base_dir}/stimulus_regressors.csv', index=False)
+    print('REGRESSORS STORED TO HDD')
 
 
 def export_binaries():
+    msg_box('COMPUTE STIMULUS BINARIES', 'STARTING TO COMPUTE STIMULUS BINARIES', sep='-')
     Tk().withdraw()
     base_dir = askdirectory()
     meta_data_file_name = [s for s in os.listdir(base_dir) if 'meta_data.csv' in s][0]
@@ -324,31 +358,46 @@ def export_binaries():
     protocol = pd.read_csv(f'{base_dir}/{protocol_file_name}')
     ca_recording_duration = float(meta_data[meta_data['parameter'] == 'rec_img_duration']['value'])
     ca_recording_fr = float(meta_data[meta_data['parameter'] == 'rec_img_fr']['value'])
+    ca_time_axis = np.arange(0, ca_recording_duration, 1/ca_recording_fr)
 
     binaries, stimulus_times = create_binary(protocol, ca_recording_fr, ca_recording_duration)
-    pd.DataFrame(binaries).to_csv(f'{base_dir}/stimulus_binaries.csv', index=False)
+    binaries_df = pd.DataFrame(binaries)
+    all_stimuli_binary_trace = pd.DataFrame()
+    all_stimuli_binary_trace['Time'] = ca_time_axis
+    all_stimuli_binary_trace['Volt'] = binaries_df.sum(axis=1)
+
+    # Store to HDD
+    binaries_df.to_csv(f'{base_dir}/stimulus_binaries.csv', index=False)
     stimulus_times.to_csv(f'{base_dir}/stimulus_times.csv', index=False)
+    all_stimuli_binary_trace.to_csv(f'{base_dir}/stimulus_trace.csv', index=False)
+    print('Stimulus Binaries and Stimulus Times (in Ca Recording Frame Rate) stored to HDD')
 
 
 def cut_out_responses():
+    msg_box('REGRESSOR ANALYSIS', 'STARTING TO CUT OUT RESPONSES AND COMPUTE REGRESSORS AND LINEAR MODEL SCORING', sep='-')
+
     # padding in secs
-    pad_before = 10
-    pad_after = 20
-    ca_dynamics_rise = 0
-    shifting_limit = 10
+    pad_before = 5
+    pad_after = 10
+    ca_dynamics_rise = 0.2
+    shifting_limit = 3
 
     Tk().withdraw()
     base_dir = askdirectory()
     meta_data_file_name = [s for s in os.listdir(base_dir) if 'meta_data.csv' in s][0]
     protocol_file_name = [s for s in os.listdir(base_dir) if 'stimulus_times' in s][0]
-    regs_file_name = [s for s in os.listdir(base_dir) if 'regressor' in s][0]
+    # regs_file_name = [s for s in os.listdir(base_dir) if 'regressor' in s][0]
     ca_rec_file_name = [s for s in os.listdir(base_dir) if 'raw_values' in s][0]
 
     meta_data = pd.read_csv(f'{base_dir}/{meta_data_file_name}')
     protocol = pd.read_csv(f'{base_dir}/{protocol_file_name}')
-    regs = pd.read_csv(f'{base_dir}/{regs_file_name}')
-    ca_rec = pd.read_csv(f'{base_dir}/{ca_rec_file_name}', index_col=0)
+    # regs = pd.read_csv(f'{base_dir}/{regs_file_name}')
+    ca_rec_raw = pd.read_csv(f'{base_dir}/{ca_rec_file_name}', index_col=0)
     ca_recording_fr = float(meta_data[meta_data['parameter'] == 'rec_img_fr']['value'])
+
+    # Convert raw values to delta f over f
+    fbs_percentile = 5
+    ca_rec = delta_f_over_f(ca_rec_raw, fbs_percentile)
 
     # Convert all parameters from secs to samples
     pad_before_samples = int(ca_recording_fr * pad_before)
@@ -370,6 +419,7 @@ def cut_out_responses():
             p = protocol[protocol['stimulus_type'] == s]
             cc = []
             for k in range(p.shape[0]):
+                roi_name = 'Mean6'
                 # Get stimulus id (name)
                 stimulus_id = p.iloc[k]['stimulus']
                 stimulus_type = p.iloc[k]['stimulus_type']
@@ -426,20 +476,22 @@ def cut_out_responses():
                 entry = [roi_name, stimulus_id, stimulus_type, stimulus_trial, sc, cross_corr_optimal_lag_secs]
                 result_list.append(entry)
 
-                # # Test Plot
-                # plt.figure()
-                # plt.title(msg)
-                # plt.plot(binary, 'b--')
-                # plt.plot(binary_optimal, 'r--')
-                # plt.plot(reg, 'b')
-                # plt.plot(reg_optimal, 'r')
-                # plt.plot(ca_trace, 'k')
-                # plt.plot(reg_same, 'y--')
-                # # plt.plot(cross_corr_func/np.max(cross_corr_func), 'g')
-                # plt.show()
-                #
+                # Test Plot
+                plt.figure()
+                plt.title(msg)
+                plt.plot(binary, 'b--')
+                plt.plot(binary_optimal, 'r--')
+                plt.plot(reg, 'b')
+                plt.plot(reg_optimal, 'r')
+                plt.plot(ca_trace, 'k')
+                plt.plot(reg_same, 'y--')
+                # plt.plot(cross_corr_func/np.max(cross_corr_func), 'g')
+                plt.show()
+
                 # Collect Results for this stimulus type
                 stimulus_type_scores[stimulus_id] = [sc, cross_corr_optimal_lag_secs]
+        embed()
+        exit()
         roi_scores[roi_name] = stimulus_type_scores
     # Put all results into one data frame (long format)
     results = pd.DataFrame(result_list, columns=['roi', 'stimulus_id', 'stimulus_type', 'trial', 'score', 'lag'])
@@ -448,6 +500,7 @@ def cut_out_responses():
 
 
 def transform_ventral_root_recording():
+    msg_box('CONVERT RAW VENTRAL ROOT RECORDINGS', 'STARTING TO CONVERT ALL VENTRAL ROOT RECORDING FILES', sep='-')
     Tk().withdraw()
     base_dir = askdirectory()
     raw_data_dir = f'{base_dir}/rawdata'
@@ -457,20 +510,63 @@ def transform_ventral_root_recording():
     # Load files
     vr_data = []
     vr_time_secs = []
+    vr_multi_entries_values = []
+    vr_multi_entries_count = []
+    tag_val = 0
+    cc = 0
+    # Loop through every ventral root recording file
+    t0 = time.perf_counter()
     for f_name in vr_files:
+        vv = []
         print(f_name)
         dummy = pd.read_csv(f'{raw_data_dir}/{f_name}', sep='\t', header=None)
         vr_data.append(dummy)
+        # Loop through every row in the ventral root file and convert the timestamp to secs
         for i, v in enumerate(dummy.iloc[:, 3].to_numpy()):
             s = convert_to_secs(v)
             vr_time_secs.append(s)
+            if i > 0:
+                if s == vr_time_secs[i-1]:
+                    cc += 1
+                    vv.append(dummy.iloc[i, 0].item())
+                else:
+                    vr_multi_entries_count.append(cc)
+                    if len(vv) == 0:
+                        print('WHAAAAT???')
+                    else:
+                        vr_multi_entries_values.append(np.mean(vv))
+                    cc = 0
+                    vv = []
+            else:
+                cc += 1
 
+            # if i > 0:
+            #     if s == vr_time_secs[i-1]:
+            #         vr_multi_entries_tag.append(tag_val)
+            #     else:
+            #         tag_val += 1
+            #         vr_multi_entries_tag.append(tag_val)
+            # else:
+            #     vr_multi_entries_tag.append(tag_val)
+
+    t1 = time.perf_counter()
+    print(f'Collecting all Recordings took: {(t1-t0):.2f} secs')
+    embed()
+    exit()
     # Reset time so that it starts at 0
     vr_time_secs = np.array(vr_time_secs)
     vr_time_secs = vr_time_secs - vr_time_secs[0]
 
     # Concat all to one data frame
+    print('... Concatenating all recordings into one data frame ...')
     vr_trace = pd.concat(vr_data).iloc[:, 0]
+
+    # Correct for multiple entries for one time point
+    start_here = 0
+    vr_test = []
+    for k, m_count in enumerate(vr_multi_entries_count):
+        vr_test.append(vr_trace[start_here:m_count])
+        start_here = m_count+1
 
     # Put all in one Data Frame
     vr_trace_export = pd.DataFrame(columns=['Time', 'Volt'])
@@ -479,6 +575,7 @@ def transform_ventral_root_recording():
     vr_trace_export['Volt'] = vr_trace.to_numpy()
 
     # Compute Envelope of VR Trace
+    print('... Compute Envelope for Ventral Root Recording Trace ...')
     vr_fr = 10000
     vr_fil, vr_env = envelope(vr_trace_export['Volt'], vr_fr, freq=20.0)
     vr_env_export = pd.DataFrame(columns=['Time', 'Volt'])
@@ -486,32 +583,56 @@ def transform_ventral_root_recording():
     vr_env_export['Volt'] = vr_env
 
     # Down-sample ventral root recording
+    print('... Down-Sampling ...')
     ds_factor = 64
     vr_trace_export_ds = vr_trace_export[::ds_factor]
     vr_env_export_ds = vr_env_export[::ds_factor]
 
     # Export to HDD
-    vr_trace_export_ds.to_csv(f'{base_dir}/ventral_root_trace.csv', index=False)
+    print('... Export Ventral Root Trace to HDD ...')
+    vr_trace_export.to_csv(f'{base_dir}/ventral_root_trace.csv', index=False)
+    vr_trace_export_ds.to_csv(f'{base_dir}/ventral_root_trace_ds_x{ds_factor}.csv', index=False)
+
+    print('... Export Ventral Root Envelope to HDD ...')
     vr_env_export.to_csv(f'{base_dir}/ventral_root_envelope.csv', index=False)
+    vr_env_export_ds.to_csv(f'{base_dir}/ventral_root_envelope_ds_x{ds_factor}.csv', index=False)
 
 
 def ventral_root_detection():
+    msg_box('VENTRAL ROOT ACTIVITY DETECTION', 'STARTING TO DETECT MOTOR EVENTS IN VENTRAL ROOT RECORDING', sep='-')
     Tk().withdraw()
     base_dir = askdirectory()
     file_list = os.listdir(base_dir)
+
+    meta_data_file_name = [s for s in os.listdir(base_dir) if 'meta_data.csv' in s][0]
+    meta_data = pd.read_csv(f'{base_dir}/{meta_data_file_name}')
     vr_trace_file = [s for s in file_list if "ventral_root_trace" in s][0]
     vr_env_file = [s for s in file_list if "ventral_root_envelope" in s][0]
     vr_trace = pd.read_csv(f'{base_dir}/{vr_trace_file}')
     vr_env = pd.read_csv(f'{base_dir}/{vr_env_file}')
-    # diff = np.diff(vr_env['Volt'], append=0)
-    # diff[diff < -0.2] = 0
-    org_trace = vr_trace['Volt']
-    org = vr_env['Volt'] / np.max(vr_env['Volt'])
-    org_fil = moving_average_filter(org, window=1000)
-    vr_z = z_transform(org_fil)
 
-    test = org ** 2
-    test = test / np.max(test)
+    ca_fr = float(meta_data[meta_data['parameter'] == 'rec_img_fr']['value'])
+    ca_duration = float(meta_data[meta_data['parameter'] == 'rec_img_duration']['value'])
+    ca_time = np.arange(0, ca_duration, 1/ca_fr)
+
+    embed()
+    exit()
+    # Correct for multiple y values for one x value in ventral root recording
+    unique_times = vr_env['Time'].unique()
+    t = vr_env['Time'].to_numpy()
+    number_of_y_values = np.zeros_like(unique_times)
+    for k, ut in enumerate(unique_times):
+        # print(f'{k} / {len(unique_times)}')
+        idx = t == ut
+        # number_of_y_values[k] = t[idx].shape[0]
+
+    org_trace = vr_trace['Volt']
+    # org = vr_env['Volt'] / np.max(vr_env['Volt'])
+    org = vr_env['Volt']
+    # Low pass filter ventral root envelope with a moving average
+    org_fil = moving_average_filter(org, window=1000)
+    # vr_z = z_transform(org_fil)
+    vr_z = z_transform(org_fil)
 
     # Create Binary
     th = 2  # threshold in SDs
@@ -519,17 +640,51 @@ def ventral_root_detection():
     binary = np.zeros_like(vr_z)
     binary[vr_z > th] = 1
 
-    plt.plot(vr_trace['Time'], z_transform(org_trace), 'k', alpha=0.6)
-    plt.plot(vr_env['Time'], vr_z, 'b', lw=1.5)
+    # Find onsets and offsets of ventral root activity
+    onsets_offsets = np.diff(binary, append=0)
+    time_axis = vr_env['Time']
+    onset_idx = np.where(onsets_offsets > 0)[0]
+    offset_idx = np.where(onsets_offsets < 0)[0]
+    onset_times = time_axis.iloc[onset_idx]
+    offset_times = time_axis.iloc[offset_idx]
+
+    # Look where in the ca recording time axis is the stimulus onset time the closest to existing values
+    vr_binary = np.zeros_like(ca_time)
+    vr_activity = []
+    for k in range(onset_times.shape[0]):
+        start = onset_times.iloc[k]
+        end = offset_times.iloc[k]
+        idx_start = np.where(ca_time <= start)[0][-1] + 1
+        idx_end = np.where(ca_time <= end)[0][-1] + 1
+        if idx_end >= len(ca_time):
+            idx_end = len(ca_time)
+        if idx_start >= len(ca_time):
+            continue
+        time_start = ca_time[idx_start]
+        time_end = ca_time[idx_end]
+        vr_binary[idx_start:idx_end] = 1
+        vr_activity.append([idx_start, idx_end, time_start, time_end])
+
+    fig, axs = plt.subplots(2, 1, sharey=True, sharex=True)
+    axs[0].plot(vr_trace['Time'], z_transform(org_trace), 'k')
+    axs[1].plot(vr_trace['Time'], z_transform(org_trace), 'k', alpha=0.1)
+    axs[1].plot(vr_env['Time'], vr_z, 'b', lw=1.5)
     # plt.plot(vr_env['Time'], z_transform(test), 'r')
-    plt.plot(vr_env['Time'], binary * th, 'g', lw=1.5)
+    axs[1].plot(vr_env['Time'], binary * th, 'g', lw=1.5)
+    axs[1].plot(vr_env['Time'], np.diff(binary, append=0)*10, 'r', lw=1.5)
     plt.show()
 
-    embed()
-    exit()
+    # Store to HDD
+    vr_activity = pd.DataFrame(vr_activity, columns=['start_idx', 'end_idx', 'start_time', 'end_time'])
+    vr_activity.to_csv(f'{base_dir}/ventral_root_activity.csv', index=False)
+    vr_binary_df = pd.DataFrame()
+    vr_binary_df['Time'] = ca_time
+    vr_binary_df['Volt'] = vr_binary
+    vr_binary_df.to_csv(f'{base_dir}/ventral_root_binary.csv', index=False)
+    print('Ventral Root Binary Stored to HDD')
 
 
-if __name__ == '__main__':
+def print_options():
     print('')
     print('Type in the number of the function you want to use')
     print('')
@@ -541,7 +696,12 @@ if __name__ == '__main__':
     print('5: Export CutOuts')
     print('6: Ventral Root Activity Detection')
     print('')
+    print('To see options type: >> options')
     print('To exit type: >> exit')
+
+
+if __name__ == '__main__':
+    print_options()
     x = True
     while x:
         print('')
@@ -560,5 +720,7 @@ if __name__ == '__main__':
             cut_out_responses()
         elif usr == '6':
             ventral_root_detection()
+        elif usr == 'options':
+            print_options()
         elif usr == 'exit':
             exit()
