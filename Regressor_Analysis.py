@@ -10,6 +10,193 @@ from IPython import embed
 from scipy.signal import hilbert
 import scipy.signal as sig
 from sklearn.linear_model import LinearRegression
+from sklearn.cluster import AgglomerativeClustering
+from sklearn.cluster import KMeans
+from sklearn import metrics
+from scipy.cluster.hierarchy import dendrogram, linkage, fcluster
+from scipy.cluster.vq import whiten
+from sklearn.decomposition import PCA
+import seaborn as sns
+
+
+def plot_dendrogram(model, **kwargs):
+    # Create linkage matrix and then plot the dendrogram
+
+    # create the counts of samples under each node
+    counts = np.zeros(model.children_.shape[0])
+    n_samples = len(model.labels_)
+    for i, merge in enumerate(model.children_):
+        current_count = 0
+        for child_idx in merge:
+            if child_idx < n_samples:
+                current_count += 1  # leaf node
+            else:
+                current_count += counts[child_idx - n_samples]
+        counts[i] = current_count
+
+    linkage_matrix = np.column_stack(
+        [model.children_, model.distances_, counts]
+    ).astype(float)
+
+    # Plot the corresponding dendrogram
+    dendrogram(linkage_matrix, **kwargs)
+
+
+def compute_clustering():
+    msg_box('CLUSTERING', 'STARTING CLUSTERING', sep='-')
+    Tk().withdraw()
+    base_dir = askdirectory()
+    file_list = os.listdir(base_dir)
+
+    lm_scoring_file_name = [s for s in os.listdir(base_dir) if 'linear_model_stimulus_scoring' in s][0]
+    lm_scoring_long = pd.read_csv(f'{base_dir}/{lm_scoring_file_name}')
+
+    # Convert Long to wide format (needed for clustering)
+    lm_scoring = lm_scoring_long.pivot_table(index='roi', columns='stimulus_id', values='score')
+    stimulus_ids = list(lm_scoring.keys())
+
+    # Average over trials (if stimulus type has multiple trials)
+    mean_trials = average_over_trials(data=lm_scoring_long)
+    embed()
+    exit()
+    mean_lm_scoring = mean_trials.pivot_table(index='roi', columns='stimulus_type', values='score')
+    # d = mean_lm_scoring.copy()
+    d = lm_scoring.copy()
+    stimulus_types = list(d.keys())
+
+    fig, axs = plt.subplots(4, 5)
+    axs = axs.flatten()
+    th = 0.2
+    for k, ax in zip(stimulus_types, axs):
+        idx = d[k] >= th
+        cells_above_th = idx.sum()
+
+        ax.hist(d[k], bins=len(d[k])//20, density=False)
+        # ax.hist(d[k], bins=len(d[k])//20, cumulative=-1, histtype='step', density=False)
+        ax.set_title(f'{k}: {cells_above_th} >= {th}')
+        ax.set_xlim(-0.5, 0.6)
+    plt.tight_layout()
+    plt.show()
+
+    # standardize (normalize) the features
+    # data = whiten(mean_lm_scoring)
+    data = mean_lm_scoring.copy()
+
+    # COMPUTE CLUSTERING
+    # Distance Metric available:
+    # ‘braycurtis’, ‘canberra’, ‘chebyshev’, ‘cityblock’, ‘correlation’, ‘cosine’, ‘dice’, ‘euclidean’, ‘hamming’,
+    # ‘jaccard’, ‘jensenshannon’, ‘kulczynski1’, ‘mahalanobis’, ‘matching’, ‘minkowski’, ‘rogerstanimoto’,
+    # ‘russellrao’, ‘seuclidean’, ‘sokalmichener’, ‘sokalsneath’, ‘sqeuclidean’, ‘yule’.
+    # Methods available:
+    # see: https://docs.scipy.org/doc/scipy/reference/generated/scipy.cluster.hierarchy.linkage.html
+
+    # Compute the distance matrix
+    matrix = linkage(
+        data,
+        method='ward',
+        metric='euclidean',
+        optimal_ordering=True
+    )
+
+    matrix = linkage(
+        data,
+        method='average',
+        metric='correlation',
+        optimal_ordering=True
+    )
+
+    # Plot Dendrogram
+    plt.figure()
+    dn = dendrogram(matrix, truncate_mode="level", p=3, distance_sort=True, show_leaf_counts=True)
+    plt.title('Dendrogram')
+
+    plt.show()
+
+    # --------------------------------------
+    # Assign cluster labels (Stimulus IDs)
+    labels = fcluster(
+        matrix, t=10,
+        criterion='maxclust'
+    )
+
+    # Create DataFrame for Scatter Plot
+    # df = pd.DataFrame(data, columns=stimulus_ids)
+    # df['labels'] = labels
+    data_plotting = data.copy()
+    data_plotting['labels'] = labels
+    # Plot Clusters
+
+    sns.scatterplot(
+        x='flash',
+        y='movingtargetlarge',
+        hue='labels',
+        data=data_plotting
+    )
+    plt.show()
+
+    # --------
+    # PCA of the Scores to reduce dimensions (number of resulting clusters)
+    pca = PCA(n_components=3)
+    pca.fit(data.T)
+    explained_variance_ratio = pca.explained_variance_ratio_
+    singular_values = pca.singular_values_
+    components = pca.components_
+    fig = plt.figure()
+    ax = fig.add_subplot(projection='3d')
+    ax.scatter(components[0], components[1], components[2])
+    plt.show()
+
+    # ----------------------------------
+    # Seaborn has a plotting function that includes a hierarchically-clustered heatmap (based on scipy)
+    sns.clustermap(data.T, method='ward')
+    plt.show()
+
+    sns.clustermap(data.T, z_score=1)
+    sns.clustermap(data.T, standard_scale=1)
+    plt.show()
+
+    # Standardize or Normalize every column in the figure
+    # Standardize:
+    sns.clustermap(lm_scoring, standard_scale=0)
+    plt.show(
+    )
+    # Normalize
+    sns.clustermap(lm_scoring, z_score=0)
+    plt.show()
+
+    # use the outlier detection
+    sns.clustermap(lm_scoring, robust=True)
+    plt.show()
+
+    # SK LEARN PACKAGE
+    # # X = np.array([[1, 2], [1, 4], [1, 0], [4, 2], [4, 4], [4, 0]])
+    # setting distance_threshold=0 ensures we compute the full tree.
+    model = AgglomerativeClustering(distance_threshold=0, n_clusters=None)
+    # model = AgglomerativeClustering(n_clusters=10)
+    model = model.fit(data)
+
+    plt.figure()
+    plt.title("Hierarchical Clustering Dendrogram")
+    # plot the top three levels of the dendrogram
+    plot_dendrogram(model, truncate_mode="level", p=4, distance_sort=True, show_leaf_counts=True)
+    plt.xlabel("Number of points in node (or index of point if no parenthesis).")
+    plt.show()
+
+    # NOTES
+    # The FeatureAgglomeration uses agglomerative clustering to group together features that look very similar,
+    # thus decreasing the number of features. It is a dimensionality reduction tool.
+    # https://scikit-learn.org/stable/modules/clustering.html#hierarchical-clustering
+
+    # K-Means Clustering
+    kmeans_model = KMeans(n_clusters=10, random_state=1).fit(data)
+    labels = kmeans_model.labels_
+    metrics.silhouette_score(data, labels, metric='euclidean')
+
+    s = []
+    for n in range(2, 20):
+        kmeans_model = KMeans(n_clusters=n, random_state=1).fit(data)
+        labels = kmeans_model.labels_
+        s.append(metrics.silhouette_score(data, labels, metric='euclidean'))
 
 
 def delta_f_over_f(data, p):
@@ -97,6 +284,12 @@ def convert_to_secs(data, method=0):
 
 
 def visual_stimulation():
+    """ Collect all (visual) stimulus text files and combine them into one data frame (csv file)
+
+    Returns
+    -------
+
+    """
     msg_box('VISUAL STIMULATION', 'STARTING TO GET ALL VISUAL STIMULATION FILES', sep='-')
     Tk().withdraw()
     base_dir = askdirectory()
@@ -106,7 +299,8 @@ def visual_stimulation():
     file_list = os.listdir(base_dir)
     meta_data_file_name = [s for s in file_list if 'meta_data.csv' in s][0]
     meta_data = pd.read_csv(f'{base_dir}/{meta_data_file_name}')
-    time_zero = float(meta_data[meta_data['parameter'] == 'rec_vr_start']['value'].item())
+    # time_zero = float(meta_data[meta_data['parameter'] == 'rec_vr_start']['value'].item())
+    time_zero = float(meta_data[meta_data['parameter'] == 'rec_img_start_plus_delay']['value'].item())
     # rec_duration = float(meta_data[meta_data['parameter'] == 'rec_vr_duration']['value'].item())
 
     file_list = os.listdir(stimulus_data_dir)
@@ -118,6 +312,7 @@ def visual_stimulation():
     idx = list(stimulus.keys())
     stimulus_df = pd.DataFrame()
     for stim_name in idx:
+        # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
         # MOVING TARGET SMALL
         if stim_name == 'movingtargetsmall':
             # convert all timestamps to secs
@@ -137,10 +332,14 @@ def visual_stimulation():
             trial_end.append(t_secs[-1])
             val = 1
             cc = 1
+            # put all trials and their values into the main data frame
+            # [onset, offset, binary value, stimulus id, stimulus type, info, trial]
             for s, e in zip(trial_start, trial_end):
-                stimulus_df = pd.concat([stimulus_df, pd.Series([s, e, val, f'{stim_name}_{cc}', stim_name, cc]).to_frame().T], ignore_index=True)
+                stimulus_df = pd.concat([stimulus_df, pd.Series([s, e, val, f'{stim_name}_{cc}', stim_name, 0, cc]).to_frame().T], ignore_index=True)
                 cc += 1
 
+        # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+        # MOVING TARGET Large
         if stim_name == 'movingtargetlarge':
             # convert all timestamps to secs
             t_secs = []
@@ -160,10 +359,14 @@ def visual_stimulation():
 
             val = 2
             cc = 1
+            # put all trials and their values into the main data frame
+            # [onset, offset, binary value, stimulus id, stimulus type, info, trial]
             for s, e in zip(trial_start, trial_end):
-                stimulus_df = pd.concat([stimulus_df, pd.Series([s, e, val, f'{stim_name}_{cc}', stim_name, cc]).to_frame().T], ignore_index=True)
+                stimulus_df = pd.concat([stimulus_df, pd.Series([s, e, val, f'{stim_name}_{cc}', stim_name, 0, cc]).to_frame().T], ignore_index=True)
                 cc += 1
 
+        # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+        # FLASH
         if stim_name == 'flash':
             # convert all timestamps to secs
             t_secs = []
@@ -173,6 +376,7 @@ def visual_stimulation():
             # t_secs = np.array(t_secs)
             t_secs = t_secs[3:]
             flash_dur = 4  # secs
+
             # The first entry is time when light turns on, then it turns off, then on etc.
             light_on_off = t_secs[::2]
             light_on_off.append(t_secs[-1])
@@ -193,10 +397,12 @@ def visual_stimulation():
                 stimulus_df = pd.concat(
                     [stimulus_df,
                      pd.Series(
-                         [i, i+flash_dur, val, f'{stim_name}_light_{cc_trial}_{state}', f'{stim_name}_{state}', cc_trial]).to_frame().T],
+                         [i, i+flash_dur, val, f'{stim_name}_light_{cc_trial}_{state}', stim_name, state, cc_trial]).to_frame().T],
                     ignore_index=True)
                 cc += 1
 
+        # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+        # GRATINGS
         if stim_name == 'grating':
             orientation = [0, 90, 180, 270]
             vals = [0.25, 0.5, 0.75, 1.0]
@@ -210,33 +416,58 @@ def visual_stimulation():
                 start_sec = convert_to_secs(s, method=1) - time_zero
                 e = stimulus[stim_name][idx_o][2].iloc[-1][11:]
                 end_sec = convert_to_secs(e, method=1) - time_zero
-                stimulus_df = pd.concat([stimulus_df, pd.Series([start_sec, end_sec, vals[cc], f'{stim_name}_{o}', stim_name, o]).to_frame().T], ignore_index=True)
+                stimulus_df = pd.concat([stimulus_df, pd.Series([start_sec, end_sec, vals[cc], f'{stim_name}_{o}', stim_name, o, 1]).to_frame().T], ignore_index=True)
                 cc += 1
 
+        # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+        # LOOMING
         if stim_name == 'looming':
             val = 1
             s = stimulus[stim_name][3].iloc[0][11:]
             e = stimulus[stim_name][3].iloc[-1][11:]
             start_sec = convert_to_secs(s, method=1) - time_zero
             end_sec = convert_to_secs(e, method=1) - time_zero
-            stimulus_df = pd.concat([stimulus_df, pd.Series([start_sec, end_sec, val, stim_name, stim_name, 0]).to_frame().T], ignore_index=True)
+            stimulus_df = pd.concat([stimulus_df, pd.Series([start_sec, end_sec, val, stim_name, stim_name, 0, 1]).to_frame().T], ignore_index=True)
 
+        # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+        # REVERSE LOOMING
         if stim_name == 'looming_rev':
             val = -1
             s = stimulus[stim_name][3].iloc[0][11:]
             e = stimulus[stim_name][3].iloc[-1][11:]
             start_sec = convert_to_secs(s, method=1) - time_zero
             end_sec = convert_to_secs(e, method=1) - time_zero
-            stimulus_df = pd.concat([stimulus_df, pd.Series([start_sec, end_sec, val, stim_name, stim_name, 0]).to_frame().T], ignore_index=True)
+            stimulus_df = pd.concat([stimulus_df, pd.Series([start_sec, end_sec, val, stim_name, stim_name, 1, 1]).to_frame().T], ignore_index=True)
 
-    stimulus_df.columns = ['start', 'end', 'value', 'stimulus', 'stimulus_type', 'trial']
+    # Names of the data frame columns
+    # [onset, offset, binary value, stimulus id, stimulus type, info, trial]
+    stimulus_df.columns = ['start', 'end', 'value', 'stimulus_id', 'stimulus_type', 'info', 'trial']
+
+    # sort data by onset time (start)
     stimulus_df_sorted = stimulus_df.sort_values(by=['start'])
     print(stimulus_df_sorted)
-    stimulus_df_sorted.to_csv(f'{base_dir}/stimulation_protocol.csv', index=False)
+
+    # Store to HDD
+    stimulus_df_sorted.to_csv(f'{base_dir}/stimulus_protocol.csv', index=False)
     print('Stimulus Protocol store to HDD')
 
 
 def create_binary(stimulus_protocol, ca_fr, ca_duration):
+    """ Creates Binaries for each stimulus type and converts onset and offset times into time points that fit into the
+    Ca Imaging Recording (frame rate).
+
+    Parameters
+    ----------
+    stimulus_protocol: must be a pandas dataframe
+    ca_fr: float
+    ca_duration: float
+
+    Returns
+    -------
+    stimulus_binaries: binary traces for each stimulus type
+    stimulus_time_points: pandas data frame with onset and offset times plus metadata
+
+    """
     ca_time = np.arange(0, ca_duration, 1/ca_fr)
     stimulus_binaries = dict()
     stimulus_times = []
@@ -244,17 +475,17 @@ def create_binary(stimulus_protocol, ca_fr, ca_duration):
         binary = np.zeros_like(ca_time)
         start = stimulus_protocol.iloc[k]['start']
         end = stimulus_protocol.iloc[k]['end']
-        stimulus_type = stimulus_protocol.iloc[k]['stimulus']
+        stimulus_type_id = stimulus_protocol.iloc[k]['stimulus_id']
         # Look where in the ca recording time axis is the stimulus onset
         idx_start = np.where(ca_time <= start)[0][-1] + 1
         idx_end = np.where(ca_time <= end)[0][-1] + 1
         binary[idx_start:idx_end] = 1
-        stimulus_binaries[stimulus_type] = binary
+        stimulus_binaries[stimulus_type_id] = binary
         stimulus_times.append(
-            [stimulus_type, stimulus_protocol.iloc[k]['stimulus_type'], stimulus_protocol.iloc[k]['trial'],
+            [stimulus_type_id, stimulus_protocol.iloc[k]['stimulus_type'], stimulus_protocol.iloc[k]['trial'], stimulus_protocol.iloc[k]['info'],
              ca_time[idx_start], ca_time[idx_end], idx_start, idx_end])
     stimulus_times_points = pd.DataFrame(
-        stimulus_times, columns=['stimulus', 'stimulus_type', 'trial', 'start', 'end', 'start_idx', 'end_idx'])
+        stimulus_times, columns=['stimulus_id', 'stimulus_type', 'trial', 'info', 'start', 'end', 'start_idx', 'end_idx'])
     return stimulus_binaries, stimulus_times_points
 
 
@@ -373,7 +604,15 @@ def export_binaries():
     print('Stimulus Binaries and Stimulus Times (in Ca Recording Frame Rate) stored to HDD')
 
 
-def cut_out_responses():
+def reg_analysis_cut_out_responses():
+    """ Regressor-Analysis between cut out responses (ca imaging of rois) and stimulus regressors (binaries)
+
+    Following files will be stored to HDD in the same directory as the input data:
+    linear_model_stimulus_scoring.csv
+
+    """
+    # ToDo: - More information into doc string
+
     msg_box('REGRESSOR ANALYSIS', 'STARTING TO CUT OUT RESPONSES AND COMPUTE REGRESSORS AND LINEAR MODEL SCORING', sep='-')
 
     # padding in secs
@@ -385,12 +624,14 @@ def cut_out_responses():
     Tk().withdraw()
     base_dir = askdirectory()
     meta_data_file_name = [s for s in os.listdir(base_dir) if 'meta_data.csv' in s][0]
-    protocol_file_name = [s for s in os.listdir(base_dir) if 'stimulus_times' in s][0]
+    # protocol_file_name = [s for s in os.listdir(base_dir) if 'stimulus_times' in s][0]
+    protocol_file_name = [s for s in os.listdir(base_dir) if 'stimulus_protocol' in s][0]
+
     # regs_file_name = [s for s in os.listdir(base_dir) if 'regressor' in s][0]
     ca_rec_file_name = [s for s in os.listdir(base_dir) if 'raw_values' in s][0]
 
     meta_data = pd.read_csv(f'{base_dir}/{meta_data_file_name}')
-    protocol = pd.read_csv(f'{base_dir}/{protocol_file_name}')
+    stimulus_protocol = pd.read_csv(f'{base_dir}/{protocol_file_name}')
     # regs = pd.read_csv(f'{base_dir}/{regs_file_name}')
     ca_rec_raw = pd.read_csv(f'{base_dir}/{ca_rec_file_name}', index_col=0)
     ca_recording_fr = float(meta_data[meta_data['parameter'] == 'rec_img_fr']['value'])
@@ -404,6 +645,11 @@ def cut_out_responses():
     pad_after_samples = int(ca_recording_fr * pad_after)
     ca_dynamics_rise_samples = int(ca_recording_fr * ca_dynamics_rise)
     shifting_limit_samples = int(ca_recording_fr * shifting_limit)
+
+    ca_fr = float(meta_data[meta_data['parameter'] == 'rec_img_fr']['value'])
+    ca_duration = float(meta_data[meta_data['parameter'] == 'rec_img_duration']['value'])
+
+    _, protocol = create_binary(stimulus_protocol, ca_fr, ca_duration)
 
     # Get unique stimulus types
     s_types = protocol['stimulus_type'].unique()
@@ -419,11 +665,11 @@ def cut_out_responses():
             p = protocol[protocol['stimulus_type'] == s]
             cc = []
             for k in range(p.shape[0]):
-                roi_name = 'Mean6'
                 # Get stimulus id (name)
-                stimulus_id = p.iloc[k]['stimulus']
+                stimulus_id = p.iloc[k]['stimulus_id']
                 stimulus_type = p.iloc[k]['stimulus_type']
                 stimulus_trial = p.iloc[k]['trial']
+                stimulus_info = p.iloc[k]['info']
 
                 start = p.iloc[k]['start_idx'] - pad_before_samples
                 end = p.iloc[k]['end_idx'] + pad_after_samples
@@ -473,30 +719,58 @@ def cut_out_responses():
 
                 # Prepare data frame entry
                 cross_corr_optimal_lag_secs = cross_corr_optimal_lag / ca_recording_fr
-                entry = [roi_name, stimulus_id, stimulus_type, stimulus_trial, sc, cross_corr_optimal_lag_secs]
+                entry = [roi_name, stimulus_id, stimulus_type, stimulus_trial, stimulus_info, sc, cross_corr_optimal_lag_secs]
                 result_list.append(entry)
 
-                # Test Plot
-                plt.figure()
-                plt.title(msg)
-                plt.plot(binary, 'b--')
-                plt.plot(binary_optimal, 'r--')
-                plt.plot(reg, 'b')
-                plt.plot(reg_optimal, 'r')
-                plt.plot(ca_trace, 'k')
-                plt.plot(reg_same, 'y--')
-                # plt.plot(cross_corr_func/np.max(cross_corr_func), 'g')
-                plt.show()
+                # # Test Plot
+                # plt.figure()
+                # plt.title(msg)
+                # plt.plot(binary, 'b--')
+                # plt.plot(binary_optimal, 'r--')
+                # plt.plot(reg, 'b')
+                # plt.plot(reg_optimal, 'r')
+                # plt.plot(ca_trace, 'k')
+                # plt.plot(reg_same, 'y--')
+                # # plt.plot(cross_corr_func/np.max(cross_corr_func), 'g')
+                # plt.show()
 
                 # Collect Results for this stimulus type
                 stimulus_type_scores[stimulus_id] = [sc, cross_corr_optimal_lag_secs]
-        embed()
-        exit()
         roi_scores[roi_name] = stimulus_type_scores
     # Put all results into one data frame (long format)
-    results = pd.DataFrame(result_list, columns=['roi', 'stimulus_id', 'stimulus_type', 'trial', 'score', 'lag'])
+    results = pd.DataFrame(result_list, columns=['roi', 'stimulus_id', 'stimulus_type', 'trial', 'info', 'score', 'lag'])
     results.to_csv(f'{base_dir}/linear_model_stimulus_scoring.csv', index=False)
     print('Linear Model Scoring Results Stored to HDD!')
+
+
+def average_over_trials(data):
+    roi_names = data['roi'].unique()
+    stimulus_types = data['stimulus_type'].unique()
+    new_data = []
+    embed()
+    exit()
+    for roi in roi_names:
+        for s_name in stimulus_types:
+            idx = (data['stimulus_type'] == s_name) * (data['roi'] == roi)
+            m_score = data[idx]['score'].mean()
+            new_entry = [roi, s_name, m_score]
+            new_data.append(new_entry)
+    mean_scores_df = pd.DataFrame(new_data, columns=['roi', 'stimulus_type', 'score'])
+
+    # roi_names = data['roi'].unique()
+    # stimulus_types = data['stimulus_type'].unique()
+    # new_data = []
+    # embed()
+    # exit()
+    # for roi in roi_names:
+    #     for s_name in stimulus_types:
+    #         idx = (data['stimulus_type'] == s_name) * (data['roi'] == roi)
+    #         m_score = data[idx]['score'].mean()
+    #         new_entry = [roi, s_name, m_score]
+    #         new_data.append(new_entry)
+    # mean_scores_df = pd.DataFrame(new_data, columns=['roi', 'stimulus_type', 'score'])
+
+    return mean_scores_df
 
 
 def transform_ventral_root_recording():
@@ -691,10 +965,11 @@ def print_options():
     print('0: Export Meta data')
     print('1: Convert Ventral Root Recording')
     print('2: Export Stimulus Protocol')
-    print('3: Export Stimulus Binaries')
-    print('4: Export Regressors')
-    print('5: Export CutOuts')
+    print('3: Export Stimulus Binaries (optional)' )
+    print('4: Export Regressors (optional)')
+    print('5: Regressor-based (LM-) Scoring')
     print('6: Ventral Root Activity Detection')
+    print('7: Run Clustering')
     print('')
     print('To see options type: >> options')
     print('To exit type: >> exit')
@@ -717,9 +992,11 @@ if __name__ == '__main__':
         elif usr == '4':
             create_regressors()
         elif usr == '5':
-            cut_out_responses()
+            reg_analysis_cut_out_responses()
         elif usr == '6':
             ventral_root_detection()
+        elif usr == '7':
+            compute_clustering()
         elif usr == 'options':
             print_options()
         elif usr == 'exit':
