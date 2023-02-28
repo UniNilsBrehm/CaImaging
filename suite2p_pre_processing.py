@@ -48,7 +48,12 @@ def suite2p_registering(rec_path, f_batch_size=300):
     file_list = os.listdir(rec_path)
     tif_file_name = [s for s in file_list if text_must_be_in_file_name in s]
     if len(tif_file_name) > 1:
-        msg_box('WARNING', 'Found more than one tif file!', '+')
+        tif_file_name = [s for s in tif_file_name if '.tif' in s]
+        if len(tif_file_name) == 1:
+            msg_box('INFO', f'Found {tif_file_name}', '+')
+        else:
+            msg_box('ERROR', 'Found more than one tif file!', '+')
+            return
     else:
         if tif_file_name:
             msg_box('INFO', f'Found {tif_file_name}', '+')

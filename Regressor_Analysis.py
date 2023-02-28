@@ -52,36 +52,35 @@ def compute_clustering():
     lm_scoring_long = pd.read_csv(f'{base_dir}/{lm_scoring_file_name}')
 
     # Convert Long to wide format (needed for clustering)
-    lm_scoring = lm_scoring_long.pivot_table(index='roi', columns='stimulus_id', values='score')
-    stimulus_ids = list(lm_scoring.keys())
+    # lm_scoring = lm_scoring_long.pivot_table(index='roi', columns='stimulus_id', values='score')
+    # stimulus_ids = list(lm_scoring.keys())
 
     # Average over trials (if stimulus type has multiple trials)
-    mean_trials = average_over_trials(data=lm_scoring_long)
-    embed()
-    exit()
-    mean_lm_scoring = mean_trials.pivot_table(index='roi', columns='stimulus_type', values='score')
+    lm_scoring_averaged = average_over_trials(data=lm_scoring_long)
+    lm_scoring = lm_scoring_averaged.pivot_table(index='roi', columns='stimulus_id', values='score')
     # d = mean_lm_scoring.copy()
-    d = lm_scoring.copy()
-    stimulus_types = list(d.keys())
+    stimulus_types = list(lm_scoring.keys())
 
-    fig, axs = plt.subplots(4, 5)
+    fig, axs = plt.subplots(5, 2)
     axs = axs.flatten()
     th = 0.2
     for k, ax in zip(stimulus_types, axs):
-        idx = d[k] >= th
+        idx = lm_scoring[k] >= th
         cells_above_th = idx.sum()
 
-        ax.hist(d[k], bins=len(d[k])//20, density=False)
+        ax.hist(lm_scoring[k], bins=int(len(lm_scoring[k])*0.2), density=False)
         # ax.hist(d[k], bins=len(d[k])//20, cumulative=-1, histtype='step', density=False)
         ax.set_title(f'{k}: {cells_above_th} >= {th}')
         ax.set_xlim(-0.5, 0.6)
     plt.tight_layout()
     plt.show()
 
+
     # standardize (normalize) the features
     # data = whiten(mean_lm_scoring)
-    data = mean_lm_scoring.copy()
-
+    data = lm_scoring.copy()
+    embed()
+    exit()
     # COMPUTE CLUSTERING
     # Distance Metric available:
     # ‘braycurtis’, ‘canberra’, ‘chebyshev’, ‘cityblock’, ‘correlation’, ‘cosine’, ‘dice’, ‘euclidean’, ‘hamming’,
@@ -106,16 +105,18 @@ def compute_clustering():
     )
 
     # Plot Dendrogram
+    # default color threshold: 0.7 * np.max(matrix[:, 2])
     plt.figure()
-    dn = dendrogram(matrix, truncate_mode="level", p=3, distance_sort=True, show_leaf_counts=True)
-    plt.title('Dendrogram')
+    dn = dendrogram(matrix, truncate_mode="level", p=0, distance_sort=True, show_leaf_counts=True,
+                    color_threshold=0.3 * np.max(matrix[:, 2]))
+    plt.title('Dendrogram2')
 
     plt.show()
 
     # --------------------------------------
     # Assign cluster labels (Stimulus IDs)
     labels = fcluster(
-        matrix, t=10,
+        matrix, t=5,
         criterion='maxclust'
     )
 
@@ -126,12 +127,23 @@ def compute_clustering():
     data_plotting['labels'] = labels
     # Plot Clusters
 
-    sns.scatterplot(
-        x='flash',
-        y='movingtargetlarge',
-        hue='labels',
-        data=data_plotting
-    )
+    # sns.scatterplot(
+    #     x='looming',
+    #     y='grating_180',
+    #     hue='labels',
+    #     data=data_plotting
+    # )
+    # plt.show()
+
+    x = 'grating_180'
+    y = 'looming'
+    z = 'movingtargetlarge'
+    fig = plt.figure()
+    ax = fig.add_subplot(projection='3d')
+    ax.scatter(data_plotting[x], data_plotting[y], data_plotting[z], c=labels, cmap='viridis')
+    ax.set_xlabel(x)
+    ax.set_ylabel(y)
+    ax.set_zlabel(z)
     plt.show()
 
     # --------
@@ -144,6 +156,9 @@ def compute_clustering():
     fig = plt.figure()
     ax = fig.add_subplot(projection='3d')
     ax.scatter(components[0], components[1], components[2])
+    ax.set_xlabel(f'PC1 ({explained_variance_ratio[0]:.2f})')
+    ax.set_ylabel(f'PC2 ({explained_variance_ratio[1]:.2f})')
+    ax.set_zlabel(f'PC3 ({explained_variance_ratio[2]:.2f})')
     plt.show()
 
     # ----------------------------------
@@ -498,10 +513,26 @@ def get_meta_data():
     rec_dt_key = 'Time Per Frame'
     Tk().withdraw()
     file_dir = askdirectory()
-    img_rec_meta_data_file = [s for s in os.listdir(file_dir) if 'recording_file_metadata' in s][0]
-    rec_meta_data = pd.read_csv(f'{file_dir}/{img_rec_meta_data_file}', sep='\t')
-    rec_name = img_rec_meta_data_file[:11]
+    img_rec_meta_data_file = [s for s in os.listdir(file_dir) if 'recording_file_metadata' in s]
+    if not img_rec_meta_data_file:
+        print('COULD NOT FINDE IMAGE RECORDING META DATA FILE')
+        print('Its file name must contain: "recording_file_metadata"')
+        return None
+    img_rec_meta_data_file = img_rec_meta_data_file[0]
+    rec_meta_data = pd.DataFrame()
+    if img_rec_meta_data_file.endswith('.csv'):
+        rec_meta_data = pd.read_csv(f'{file_dir}/{img_rec_meta_data_file}', sep=',')
+    elif img_rec_meta_data_file.endswith('.txt'):
+        rec_meta_data = pd.read_csv(f'{file_dir}/{img_rec_meta_data_file}', sep='\t')
+    else:
+        print('ERROR: METADATA FILE HAS WRONG FORMAT!')
+        return None
 
+    print('')
+    print(f'INFO: MANUALLY ADDED OLYMPUS SETUP DELAY of {olympus_setup_delay} s')
+    print('')
+
+    rec_name = img_rec_meta_data_file[:11]
     time_stamp = rec_meta_data[rec_meta_data['Key'] == time_stamp_key]['Value'].values[0][12:-1]
     time_stamp_ms = rec_meta_data[rec_meta_data['Key'] == time_stamp_key_ms]['Value'].values[0]
     img_rec_start = int(time_stamp[:2]) * 3600 + int(time_stamp[3:5]) * 60 + int(time_stamp[6:]) + int(time_stamp_ms)/1000
@@ -743,19 +774,137 @@ def reg_analysis_cut_out_responses():
     print('Linear Model Scoring Results Stored to HDD!')
 
 
+def reg_analysis_ventral_root():
+    """ Regressor-Analysis between cut out responses (ca imaging of rois) and motor activity (ventral root recording)
+
+    Following files will be stored to HDD in the same directory as the input data:
+    linear_model_ventral_root_scoring.csv
+
+    """
+    # ToDo: - More information into doc string
+
+    msg_box('REGRESSOR ANALYSIS', 'STARTING TO CUT OUT RESPONSES AND COMPUTE REGRESSORS AND LINEAR MODEL SCORING', sep='-')
+
+    # padding in secs
+    pad_before = 5
+    pad_after = 10
+    ca_dynamics_rise = 0.2
+    shifting_limit = 3
+
+    Tk().withdraw()
+    base_dir = askdirectory()
+    meta_data_file_name = [s for s in os.listdir(base_dir) if 'meta_data.csv' in s][0]
+    binary_file_name = [s for s in os.listdir(base_dir) if 'ventral_root_binary' in s][0]
+    ca_rec_file_name = [s for s in os.listdir(base_dir) if 'raw_values' in s][0]
+    reg_file_name = [s for s in os.listdir(base_dir) if 'reg_trace' in s][0]
+
+    meta_data = pd.read_csv(f'{base_dir}/{meta_data_file_name}')
+    binary = pd.read_csv(f'{base_dir}/{binary_file_name}')
+    reg = pd.read_csv(f'{base_dir}/{reg_file_name}')
+    ca_rec_raw = pd.read_csv(f'{base_dir}/{ca_rec_file_name}', index_col=0)
+    ca_recording_fr = float(meta_data[meta_data['parameter'] == 'rec_img_fr']['value'])
+
+    # Convert raw values to delta f over f
+    fbs_percentile = 5
+    ca_rec = delta_f_over_f(ca_rec_raw, fbs_percentile)
+    ca_fr = float(meta_data[meta_data['parameter'] == 'rec_img_fr']['value'])
+    ca_duration = float(meta_data[meta_data['parameter'] == 'rec_img_duration']['value'])
+    ca_time = np.arange(0, ca_duration, 1/ca_fr)
+
+    rois = list(ca_rec.keys())
+    results = []
+    for roi_name in rois:
+        # sc, rr, aa = apply_linear_model(xx=reg['Volt'].to_numpy(), yy=ca_rec[roi_name].to_numpy(), norm_reg=True)
+        sc, rr, aa = apply_linear_model(xx=reg['Volt'].to_numpy(), yy=ca_rec[roi_name].to_numpy(), norm_reg=True)
+
+        results.append([roi_name, sc, rr, aa])
+    results_df = pd.DataFrame(results, columns=['roi', 'score', 'r_squared', 'slope'])
+
+    plt.figure()
+    plt.plot(ca_time, ca_rec['Mean1'], 'k')
+    plt.plot(ca_time, reg['Volt'], 'b')
+    plt.plot(ca_time, binary['Volt'], 'g')
+    plt.show()
+
+    embed()
+    exit()
+
+    # Convert all parameters from secs to samples
+    pad_before_samples = int(ca_recording_fr * pad_before)
+    pad_after_samples = int(ca_recording_fr * pad_after)
+    ca_dynamics_rise_samples = int(ca_recording_fr * ca_dynamics_rise)
+    shifting_limit_samples = int(ca_recording_fr * shifting_limit)
+
+
+    # Compute Regressor Trace
+    cif = create_cif_double_tau(fr=ca_fr, tau1=0.1, tau2=1)
+    reg = np.convolve(binary['Volt'].to_numpy(), cif, 'full')
+    conv_pad = (len(reg) - ca_rec.shape[0])
+    reg_same = reg[:-conv_pad]
+    rois = list(ca_rec.keys())
+    results = []
+    for roi_name in rois:
+        sc, rr, aa = apply_linear_model(xx=reg_same, yy=ca_rec[roi_name].to_numpy(), norm_reg=True)
+        results.append([roi_name, sc, rr, aa])
+    results_df = pd.DataFrame(results, columns=['roi', 'score', 'r_squared', 'slope'])
+
+    plt.figure()
+    plt.plot(ca_time, ca_rec['Mean1'], 'k')
+    plt.plot(ca_time, reg_same, 'b')
+    plt.plot(ca_time, binary['Volt'], 'g')
+    plt.show()
+
+    reg_df = pd.DataFrame()
+    reg_df['Time'] = ca_time
+    reg_df['Volt'] = reg_same
+    reg_df.to_csv(f'{base_dir}/ventral_root_reg_trace.csv', index=False)
+    embed()
+    exit()
+
+
 def average_over_trials(data):
+    """ Average over trials for "movingtargetsmall" and "movingtargetlarge", as well as for "flash ON" and "flash OFF".
+    All the other stimulus types just copy from the original data frame.
+
+    Parameters
+    ----------
+    data
+
+    Returns
+    -------
+
+    """
     roi_names = data['roi'].unique()
     stimulus_types = data['stimulus_type'].unique()
     new_data = []
-    embed()
-    exit()
     for roi in roi_names:
         for s_name in stimulus_types:
-            idx = (data['stimulus_type'] == s_name) * (data['roi'] == roi)
-            m_score = data[idx]['score'].mean()
-            new_entry = [roi, s_name, m_score]
-            new_data.append(new_entry)
-    mean_scores_df = pd.DataFrame(new_data, columns=['roi', 'stimulus_type', 'score'])
+            if (s_name == 'movingtargetsmall') or (s_name == 'movingtargetlarge'):
+                idx = (data['stimulus_type'] == s_name) * (data['roi'] == roi)
+                m_score = data[idx]['score'].mean()
+                m_lag = data[idx]['lag'].mean()
+                new_entry = [roi, s_name, s_name, 0, m_score, m_lag]
+                new_data.append(new_entry)
+            if s_name == 'flash':
+                idx = (data['stimulus_type'] == s_name) * (data['roi'] == roi)
+                dummy = data[idx]
+                # get ON and OFF Flashs
+                on_mean = dummy[dummy['info'] == 'ON']['score'].mean()
+                on_lag = dummy[dummy['info'] == 'ON']['lag'].mean()
+                off_mean = dummy[dummy['info'] == 'OFF']['score'].mean()
+                off_lag = dummy[dummy['info'] == 'OFF']['lag'].mean()
+
+                new_entry_on = [roi, f'{s_name}_ON', s_name, 'ON', on_mean, on_lag]
+                new_entry_off = [roi, f'{s_name}_OFF', s_name, 'OFF', off_mean, off_lag]
+                new_data.append(new_entry_on)
+                new_data.append(new_entry_off)
+    mean_scores_df = pd.DataFrame(new_data, columns=['roi', 'stimulus_id', 'stimulus_type', 'info', 'score', 'lag'])
+    # Now add the other original entries that do not need averaging
+    looms = data[data['stimulus_type'] == 'looming']
+    looms_rev = data[data['stimulus_type'] == 'looming_rev']
+    gratings = data[data['stimulus_type'] == 'grating']
+    results = pd.concat([mean_scores_df, looms, looms_rev, gratings]).drop(columns='trial')
+    results = results.sort_values(by='roi').reset_index(drop=True)
 
     # roi_names = data['roi'].unique()
     # stimulus_types = data['stimulus_type'].unique()
@@ -770,7 +919,7 @@ def average_over_trials(data):
     #         new_data.append(new_entry)
     # mean_scores_df = pd.DataFrame(new_data, columns=['roi', 'stimulus_type', 'score'])
 
-    return mean_scores_df
+    return results
 
 
 def transform_ventral_root_recording():
@@ -799,20 +948,20 @@ def transform_ventral_root_recording():
         for i, v in enumerate(dummy.iloc[:, 3].to_numpy()):
             s = convert_to_secs(v)
             vr_time_secs.append(s)
-            if i > 0:
-                if s == vr_time_secs[i-1]:
-                    cc += 1
-                    vv.append(dummy.iloc[i, 0].item())
-                else:
-                    vr_multi_entries_count.append(cc)
-                    if len(vv) == 0:
-                        print('WHAAAAT???')
-                    else:
-                        vr_multi_entries_values.append(np.mean(vv))
-                    cc = 0
-                    vv = []
-            else:
-                cc += 1
+            # if i > 0:
+            #     if s == vr_time_secs[i-1]:
+            #         cc += 1
+            #         vv.append(dummy.iloc[i, 0].item())
+            #     else:
+            #         vr_multi_entries_count.append(cc)
+            #         if len(vv) == 0:
+            #             print('WHAAAAT???')
+            #         else:
+            #             vr_multi_entries_values.append(np.mean(vv))
+            #         cc = 0
+            #         vv = []
+            # else:
+            #     cc += 1
 
             # if i > 0:
             #     if s == vr_time_secs[i-1]:
@@ -823,10 +972,6 @@ def transform_ventral_root_recording():
             # else:
             #     vr_multi_entries_tag.append(tag_val)
 
-    t1 = time.perf_counter()
-    print(f'Collecting all Recordings took: {(t1-t0):.2f} secs')
-    embed()
-    exit()
     # Reset time so that it starts at 0
     vr_time_secs = np.array(vr_time_secs)
     vr_time_secs = vr_time_secs - vr_time_secs[0]
@@ -870,6 +1015,8 @@ def transform_ventral_root_recording():
     print('... Export Ventral Root Envelope to HDD ...')
     vr_env_export.to_csv(f'{base_dir}/ventral_root_envelope.csv', index=False)
     vr_env_export_ds.to_csv(f'{base_dir}/ventral_root_envelope_ds_x{ds_factor}.csv', index=False)
+    t1 = time.perf_counter()
+    print(f'Collecting all Recordings took: {(t1-t0):.2f} secs')
 
 
 def ventral_root_detection():
@@ -877,6 +1024,8 @@ def ventral_root_detection():
     Tk().withdraw()
     base_dir = askdirectory()
     file_list = os.listdir(base_dir)
+    th = float(input('Enter Detection Threshold (SD): '))
+    print(f'Threshold was set to {th} SD')
 
     meta_data_file_name = [s for s in os.listdir(base_dir) if 'meta_data.csv' in s][0]
     meta_data = pd.read_csv(f'{base_dir}/{meta_data_file_name}')
@@ -884,21 +1033,18 @@ def ventral_root_detection():
     vr_env_file = [s for s in file_list if "ventral_root_envelope" in s][0]
     vr_trace = pd.read_csv(f'{base_dir}/{vr_trace_file}')
     vr_env = pd.read_csv(f'{base_dir}/{vr_env_file}')
-
     ca_fr = float(meta_data[meta_data['parameter'] == 'rec_img_fr']['value'])
     ca_duration = float(meta_data[meta_data['parameter'] == 'rec_img_duration']['value'])
     ca_time = np.arange(0, ca_duration, 1/ca_fr)
 
-    embed()
-    exit()
     # Correct for multiple y values for one x value in ventral root recording
-    unique_times = vr_env['Time'].unique()
-    t = vr_env['Time'].to_numpy()
-    number_of_y_values = np.zeros_like(unique_times)
-    for k, ut in enumerate(unique_times):
-        # print(f'{k} / {len(unique_times)}')
-        idx = t == ut
-        # number_of_y_values[k] = t[idx].shape[0]
+    # unique_times = vr_env['Time'].unique()
+    # t = vr_env['Time'].to_numpy()
+    # number_of_y_values = np.zeros_like(unique_times)
+    # for k, ut in enumerate(unique_times):
+    #     # print(f'{k} / {len(unique_times)}')
+    #     idx = t == ut
+    #     # number_of_y_values[k] = t[idx].shape[0]
 
     org_trace = vr_trace['Volt']
     # org = vr_env['Volt'] / np.max(vr_env['Volt'])
@@ -909,10 +1055,12 @@ def ventral_root_detection():
     vr_z = z_transform(org_fil)
 
     # Create Binary
-    th = 2  # threshold in SDs
+    # th = 1  # threshold in SDs
     # th = low_pass_filter(vr_z, rate=1000, freq=300)
     binary = np.zeros_like(vr_z)
     binary[vr_z > th] = 1
+    duration_th_secs = 5  # in secs
+    duration_th = int(ca_fr * duration_th_secs)
 
     # Find onsets and offsets of ventral root activity
     onsets_offsets = np.diff(binary, append=0)
@@ -922,40 +1070,79 @@ def ventral_root_detection():
     onset_times = time_axis.iloc[onset_idx]
     offset_times = time_axis.iloc[offset_idx]
 
+    # check for motor activity that is too long (artifacts due to concatenating recordings) and remove it
+    event_duration = offset_times.to_numpy() - onset_times.to_numpy()
+    idx_remove = event_duration > duration_th_secs
+    onset_times = onset_times[np.invert(idx_remove)]
+    offset_times = offset_times[np.invert(idx_remove)]
+
     # Look where in the ca recording time axis is the stimulus onset time the closest to existing values
     vr_binary = np.zeros_like(ca_time)
     vr_activity = []
+    vr_activity_onsets = np.zeros_like(onset_times)
+    vr_activity_offsets = np.zeros_like(onset_times)
     for k in range(onset_times.shape[0]):
         start = onset_times.iloc[k]
         end = offset_times.iloc[k]
         idx_start = np.where(ca_time <= start)[0][-1] + 1
         idx_end = np.where(ca_time <= end)[0][-1] + 1
+
+        # Make sure that each event ist at least one sample long
+        if idx_start == idx_end:
+            idx_end += 1
+
         if idx_end >= len(ca_time):
             idx_end = len(ca_time)
         if idx_start >= len(ca_time):
             continue
+
         time_start = ca_time[idx_start]
         time_end = ca_time[idx_end]
+        dur = time_end - time_start
+        # # check for motor activity that is too long (artifacts due to concatenating recordings)
+        # if time_end - time_start > duration_th:
+        #     print('FOUND TOO LONG MOTOR ACTIVITY EVENT AND REMOVED IT')
+        #     continue
+        vr_activity_onsets[k] = time_start
+        vr_activity_offsets[k] = time_end
         vr_binary[idx_start:idx_end] = 1
-        vr_activity.append([idx_start, idx_end, time_start, time_end])
+        vr_activity.append([idx_start, idx_end, time_start, time_end, dur])
+    # Test Reg
+    cif = create_cif_double_tau(fr=ca_fr, tau1=0.5, tau2=3.0)
+    reg_test, reg_test_same = reg_convolution(cif, vr_binary)
+    reg_plot = (reg_test_same / np.max(reg_test_same)) * np.max(z_transform(org_trace))
 
     fig, axs = plt.subplots(2, 1, sharey=True, sharex=True)
     axs[0].plot(vr_trace['Time'], z_transform(org_trace), 'k')
+    axs[0].plot(ca_time, reg_plot, 'r', lw=2)
     axs[1].plot(vr_trace['Time'], z_transform(org_trace), 'k', alpha=0.1)
     axs[1].plot(vr_env['Time'], vr_z, 'b', lw=1.5)
     # plt.plot(vr_env['Time'], z_transform(test), 'r')
-    axs[1].plot(vr_env['Time'], binary * th, 'g', lw=1.5)
-    axs[1].plot(vr_env['Time'], np.diff(binary, append=0)*10, 'r', lw=1.5)
+    axs[1].plot(vr_env['Time'], binary * th, 'g', lw=2)
+    axs[1].plot(vr_env['Time'], np.diff(binary, append=0)*10, 'r', lw=2)
+    axs[1].plot(ca_time, vr_binary * th, 'go:', lw=1.5, alpha=0.7)
+    axs[1].plot(ca_time, np.diff(vr_binary, append=0)*10, 'rx:', lw=1.5, alpha=0.7)
     plt.show()
 
     # Store to HDD
-    vr_activity = pd.DataFrame(vr_activity, columns=['start_idx', 'end_idx', 'start_time', 'end_time'])
+    vr_activity = pd.DataFrame(vr_activity, columns=['start_idx', 'end_idx', 'start_time', 'end_time', 'duration'])
     vr_activity.to_csv(f'{base_dir}/ventral_root_activity.csv', index=False)
     vr_binary_df = pd.DataFrame()
     vr_binary_df['Time'] = ca_time
     vr_binary_df['Volt'] = vr_binary
-    vr_binary_df.to_csv(f'{base_dir}/ventral_root_binary.csv', index=False)
+    vr_binary_df.to_csv(f'{base_dir}/ventral_root_binary_trace.csv', index=False)
+    vr_reg_trace = pd.DataFrame()
+    vr_reg_trace['Time'] = ca_time
+    vr_reg_trace['Volt'] = reg_test_same
+    vr_reg_trace.to_csv(f'{base_dir}/ventral_root_reg_trace.csv', index=False)
     print('Ventral Root Binary Stored to HDD')
+
+
+def reg_convolution(cif, binary):
+    reg = np.convolve(binary, cif, 'full')
+    conv_pad = (len(reg) - binary.shape[0])
+    reg_same = reg[:-conv_pad]
+    return reg, reg_same
 
 
 def print_options():
@@ -970,6 +1157,8 @@ def print_options():
     print('5: Regressor-based (LM-) Scoring')
     print('6: Ventral Root Activity Detection')
     print('7: Run Clustering')
+    print('8: LM Scoring for Ventral Root')
+
     print('')
     print('To see options type: >> options')
     print('To exit type: >> exit')
@@ -997,6 +1186,8 @@ if __name__ == '__main__':
             ventral_root_detection()
         elif usr == '7':
             compute_clustering()
+        elif usr == '8':
+            reg_analysis_ventral_root()
         elif usr == 'options':
             print_options()
         elif usr == 'exit':
