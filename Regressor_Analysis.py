@@ -16,6 +16,7 @@ from sklearn import metrics
 from scipy.cluster.hierarchy import dendrogram, linkage, fcluster
 from scipy.cluster.vq import whiten
 from sklearn.decomposition import PCA
+from pylab import cm as color_maps
 import seaborn as sns
 
 
@@ -40,6 +41,25 @@ def plot_dendrogram(model, **kwargs):
 
     # Plot the corresponding dendrogram
     dendrogram(linkage_matrix, **kwargs)
+
+
+def compute_pca(data, labels, wh=False, show=True):
+    pca = PCA(n_components=3, whiten=wh)
+    pca.fit(data.T)
+    explained_variance_ratio = pca.explained_variance_ratio_
+    singular_values = pca.singular_values_
+    components = pca.components_
+    # cmap = color_maps.get_cmap('PiYG', 11)  # 11 discrete colors (from pylab)
+
+    fig = plt.figure()
+    ax = fig.add_subplot(projection='3d')
+    s_plot = ax.scatter(components[0], components[1], components[2], c=labels, cmap='tab10')
+    ax.set_xlabel(f'PC1 ({explained_variance_ratio[0]:.2f})')
+    ax.set_ylabel(f'PC2 ({explained_variance_ratio[1]:.2f})')
+    ax.set_zlabel(f'PC3 ({explained_variance_ratio[2]:.2f})')
+    plt.colorbar(s_plot)
+    if show:
+        plt.show()
 
 
 def compute_clustering():
@@ -97,12 +117,12 @@ def compute_clustering():
         optimal_ordering=True
     )
 
-    matrix = linkage(
-        data,
-        method='average',
-        metric='correlation',
-        optimal_ordering=True
-    )
+    # matrix = linkage(
+    #     data,
+    #     method='average',
+    #     metric='correlation',
+    #     optimal_ordering=True
+    # )
 
     # Plot Dendrogram
     # default color threshold: 0.7 * np.max(matrix[:, 2])
@@ -116,7 +136,7 @@ def compute_clustering():
     # --------------------------------------
     # Assign cluster labels (Stimulus IDs)
     labels = fcluster(
-        matrix, t=5,
+        matrix, t=10,
         criterion='maxclust'
     )
 
@@ -137,7 +157,8 @@ def compute_clustering():
 
     x = 'grating_180'
     y = 'looming'
-    z = 'movingtargetlarge'
+    z = 'grating_0'
+
     fig = plt.figure()
     ax = fig.add_subplot(projection='3d')
     ax.scatter(data_plotting[x], data_plotting[y], data_plotting[z], c=labels, cmap='viridis')
@@ -148,29 +169,29 @@ def compute_clustering():
 
     # --------
     # PCA of the Scores to reduce dimensions (number of resulting clusters)
-    pca = PCA(n_components=3)
-    pca.fit(data.T)
-    explained_variance_ratio = pca.explained_variance_ratio_
-    singular_values = pca.singular_values_
-    components = pca.components_
-    fig = plt.figure()
-    ax = fig.add_subplot(projection='3d')
-    ax.scatter(components[0], components[1], components[2])
-    ax.set_xlabel(f'PC1 ({explained_variance_ratio[0]:.2f})')
-    ax.set_ylabel(f'PC2 ({explained_variance_ratio[1]:.2f})')
-    ax.set_zlabel(f'PC3 ({explained_variance_ratio[2]:.2f})')
-    plt.show()
+    compute_pca(data, labels, wh=False, show=True)
 
     # ----------------------------------
     # Seaborn has a plotting function that includes a hierarchically-clustered heatmap (based on scipy)
     sns.clustermap(data.T, method='ward')
     plt.show()
 
-    sns.clustermap(data.T, z_score=1)
+    sns.clustermap(data.T, z_score=1, vmin=-3, vmax=4, cmap='afmhot', row_cluster=False, col_cluster=True,
+                   dendrogram_ratio=(.1, .3),
+                   cbar_pos=(0.02, .2, .03, .4),
+                   figsize=(10, 5)
+                   )
+    plt.show()
+
+    sns.clustermap(data.T, z_score=1, vmin=-3, vmax=4, cmap='afmhot', row_cluster=False,
+                   col_cluster=True, metric="correlation", method="average")
+    plt.show()
+
     sns.clustermap(data.T, standard_scale=1)
     plt.show()
 
-    # Standardize or Normalize every column in the figure
+    # Standardize or Normalize every column in the figure (=0: rows, =1: cols)
+    # Cols are the neurons and Rows are the different stimulus types
     # Standardize:
     sns.clustermap(lm_scoring, standard_scale=0)
     plt.show(
@@ -250,7 +271,7 @@ def low_pass_filter(data, rate, freq=100.0):
     return filtered
 
 
-def apply_linear_model(xx, yy, norm_reg=True):
+def apply_linear_model(xx, yy, norm_reg=False):
     # Normalize data to [0, 1]
     if norm_reg:
         f_y = yy / np.max(yy)
@@ -686,10 +707,10 @@ def reg_analysis_cut_out_responses():
     s_types = protocol['stimulus_type'].unique()
 
     # Loop through all ROIs (cols of the ca recording data frame)
-    roi_scores = dict()
+    # roi_scores = dict()
     result_list = []
     for roi_name in ca_rec:
-        stimulus_type_scores = dict()
+        # stimulus_type_scores = dict()
         # Loop through stimulus types (e.g. "movingtargetsmall")
         for s in s_types:
             # Get stimulus type
@@ -718,7 +739,7 @@ def reg_analysis_cut_out_responses():
                 reg = np.convolve(binary, cif, 'full')
                 reg = reg / np.max(reg)
                 # ca_trace = reg + 0.4 * np.random.randn(len(reg))
-                conv_pad = (len(reg) - len(ca_trace))
+                # conv_pad = (len(reg) - len(ca_trace))
                 # reg_same = reg[:-conv_pad]
 
                 cross_corr_func = sig.correlate(ca_trace, reg, mode='full')
@@ -744,13 +765,13 @@ def reg_analysis_cut_out_responses():
                 reg_same = reg_optimal[:-conv_pad]
 
                 # Use Linear Regression Model to compute a Score
-                sc, rr, aa = apply_linear_model(xx=reg_same, yy=ca_trace, norm_reg=True)
+                sc, rr, aa = apply_linear_model(xx=reg_same, yy=ca_trace)
                 msg = f"{roi_name}-{stimulus_id}: {sc:.3f}/{cross_corr_optimal_lag/ca_recording_fr:.3f} s"
-                print(msg)
+                # print(msg)
 
                 # Prepare data frame entry
                 cross_corr_optimal_lag_secs = cross_corr_optimal_lag / ca_recording_fr
-                entry = [roi_name, stimulus_id, stimulus_type, stimulus_trial, stimulus_info, sc, cross_corr_optimal_lag_secs]
+                entry = [roi_name, stimulus_id, stimulus_type, stimulus_trial, stimulus_info, sc, rr, aa, cross_corr_optimal_lag_secs]
                 result_list.append(entry)
 
                 # # Test Plot
@@ -766,10 +787,12 @@ def reg_analysis_cut_out_responses():
                 # plt.show()
 
                 # Collect Results for this stimulus type
-                stimulus_type_scores[stimulus_id] = [sc, cross_corr_optimal_lag_secs]
-        roi_scores[roi_name] = stimulus_type_scores
+                # stimulus_type_scores[stimulus_id] = [sc, cross_corr_optimal_lag_secs]
+        # roi_scores[roi_name] = stimulus_type_scores
     # Put all results into one data frame (long format)
-    results = pd.DataFrame(result_list, columns=['roi', 'stimulus_id', 'stimulus_type', 'trial', 'info', 'score', 'lag'])
+    results = pd.DataFrame(
+        result_list,
+        columns=['roi', 'stimulus_id', 'stimulus_type', 'trial', 'info', 'score', 'r_squared', 'slope', 'lag'])
     results.to_csv(f'{base_dir}/linear_model_stimulus_scoring.csv', index=False)
     print('Linear Model Scoring Results Stored to HDD!')
 
@@ -811,23 +834,59 @@ def reg_analysis_ventral_root():
     ca_duration = float(meta_data[meta_data['parameter'] == 'rec_img_duration']['value'])
     ca_time = np.arange(0, ca_duration, 1/ca_fr)
 
+    # Create Regressor
+    cif = create_cif_double_tau(fr=ca_fr, tau1=1.2, tau2=5.0)
+    reg, reg_same = reg_convolution(cif, binary['Volt'])
+
     rois = list(ca_rec.keys())
     results = []
     for roi_name in rois:
-        # sc, rr, aa = apply_linear_model(xx=reg['Volt'].to_numpy(), yy=ca_rec[roi_name].to_numpy(), norm_reg=True)
-        sc, rr, aa = apply_linear_model(xx=reg['Volt'].to_numpy(), yy=ca_rec[roi_name].to_numpy(), norm_reg=True)
-
+        sc, rr, aa = apply_linear_model(xx=reg_same, yy=ca_rec[roi_name].to_numpy(), norm_reg=False)
         results.append([roi_name, sc, rr, aa])
     results_df = pd.DataFrame(results, columns=['roi', 'score', 'r_squared', 'slope'])
 
     plt.figure()
-    plt.plot(ca_time, ca_rec['Mean1'], 'k')
-    plt.plot(ca_time, reg['Volt'], 'b')
+    plt.plot(ca_time, ca_rec['Mean20'], 'k')
+    plt.plot(ca_time, reg_same, 'b')
     plt.plot(ca_time, binary['Volt'], 'g')
     plt.show()
 
     embed()
     exit()
+
+    # Test linear model scoring
+    scores, rs, slopes = [], [], []
+    noise_range = np.arange(0.001, 0.99, 0.001)
+    for noise_factor in noise_range:
+        noise_factor = 0.1
+        sine_factor = noise_factor
+        reg_test = reg_same
+        noise = np.zeros_like(reg_test) + np.random.randn(len(reg_test)) * noise_factor + np.sin(ca_time*np.pi*50) * sine_factor
+        signal_test = reg_test + noise
+        # signal_test[:115] = noise[:115]
+        # signal_test[240:300] = noise[240:300]
+        # signal_test[1000:1100] = noise[1000:1100]
+        sc, rr, aa = apply_linear_model(xx=reg_test, yy=signal_test, norm_reg=False)
+        print(f'{noise_factor:.3f}: score={sc:.3f}, r={rr:.3f}, slope={aa:.3f}')
+        scores.append(sc)
+        rs.append(rr)
+        slopes.append(aa)
+
+    plt.figure()
+    plt.plot(reg_test, 'r')
+    plt.plot(signal_test, 'k')
+    plt.plot(noise-1, 'b', alpha=0.7)
+    plt.show()
+
+    plt.figure()
+    plt.plot(noise_range, scores, 'r.', label='Score', alpha=0.2)
+    plt.plot(noise_range, rs, 'b.', label='R Squared', alpha=0.2)
+    plt.plot(noise_range, slopes, 'g.', label='Slope', alpha=0.2)
+    plt.plot(noise_range, np.zeros_like(noise_range)+0.2, 'k--')
+    plt.legend()
+    plt.xlabel('Noise Factor')
+    plt.ylabel('Value')
+    plt.show()
 
     # Convert all parameters from secs to samples
     pad_before_samples = int(ca_recording_fr * pad_before)
@@ -888,11 +947,18 @@ def average_over_trials(data):
             if s_name == 'flash':
                 idx = (data['stimulus_type'] == s_name) * (data['roi'] == roi)
                 dummy = data[idx]
-                # get ON and OFF Flashs
-                on_mean = dummy[dummy['info'] == 'ON']['score'].mean()
-                on_lag = dummy[dummy['info'] == 'ON']['lag'].mean()
-                off_mean = dummy[dummy['info'] == 'OFF']['score'].mean()
-                off_lag = dummy[dummy['info'] == 'OFF']['lag'].mean()
+
+                # Get ON and OFF Flash Means
+                # on_mean = dummy[dummy['info'] == 'ON']['score'].mean()
+                # on_lag = dummy[dummy['info'] == 'ON']['lag'].mean()
+                # off_mean = dummy[dummy['info'] == 'OFF']['score'].mean()
+                # off_lag = dummy[dummy['info'] == 'OFF']['lag'].mean()
+
+                # Get ON and OFF Flash Weighted Mean Score and Lag (weighted by r square values)
+                on_mean = np.average(dummy[dummy['info'] == 'ON']['score'], weights=dummy[dummy['info'] == 'ON']['r_squared'])
+                on_lag = np.average(dummy[dummy['info'] == 'ON']['lag'], weights=dummy[dummy['info'] == 'ON']['r_squared'])
+                off_mean = np.average(dummy[dummy['info'] == 'OFF']['score'], weights=dummy[dummy['info'] == 'OFF']['r_squared'])
+                off_lag = np.average(dummy[dummy['info'] == 'OFF']['lag'], weights=dummy[dummy['info'] == 'OFF']['r_squared'])
 
                 new_entry_on = [roi, f'{s_name}_ON', s_name, 'ON', on_mean, on_lag]
                 new_entry_off = [roi, f'{s_name}_OFF', s_name, 'OFF', off_mean, off_lag]
