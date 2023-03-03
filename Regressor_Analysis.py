@@ -10,14 +10,184 @@ from IPython import embed
 from scipy.signal import hilbert
 import scipy.signal as sig
 from sklearn.linear_model import LinearRegression
-from sklearn.cluster import AgglomerativeClustering
-from sklearn.cluster import KMeans
-from sklearn import metrics
+from sklearn.cluster import AgglomerativeClustering, FeatureAgglomeration, KMeans
+from sklearn.datasets import make_blobs
+from sklearn.metrics import silhouette_samples, silhouette_score
 from scipy.cluster.hierarchy import dendrogram, linkage, fcluster
 from scipy.cluster.vq import whiten
 from sklearn.decomposition import PCA
 from pylab import cm as color_maps
 import seaborn as sns
+import matplotlib.cm as cm
+
+
+def sort_by_r(data, r_th):
+    all_rois = data['roi'].unique()
+    selection = []
+    for roi in all_rois:
+        dummy = data[data['roi'] == roi]
+        r_squared_values = dummy['r_squared']
+        if any(r_squared_values >= r_th):
+            selection.append(dummy)
+    lm_scoring_selected = pd.concat(selection).reset_index(drop=True)
+    return lm_scoring_selected
+
+
+def sil():
+
+    msg_box('CLUSTERING', 'STARTING CLUSTERING', sep='-')
+    Tk().withdraw()
+    base_dir = askdirectory()
+
+    lm_scoring_file_name = [s for s in os.listdir(base_dir) if 'linear_model_stimulus_scoring' in s][0]
+    lm_scoring_long = pd.read_csv(f'{base_dir}/{lm_scoring_file_name}')
+
+    # Average over trials (if stimulus type has multiple trials)
+    lm_scoring_averaged = average_over_trials(data=lm_scoring_long)
+    stimulus_types = lm_scoring_averaged['stimulus_id'].unique()
+
+    # Sort out low R squared values
+
+    test = lm_scoring_averaged.pivot_table(index='roi', columns='stimulus_id', values='score')
+    lm_scoring = lm_scoring_selected.pivot_table(index='roi', columns='stimulus_id', values='score')
+    embed()
+    exit()
+    # Generating the sample data from make_blobs
+    # This particular setting has one distinct cluster and 3 clusters placed close
+    # together.
+    # X, y = make_blobs(
+    #     n_samples=500,
+    #     n_features=2,
+    #     centers=4,
+    #     cluster_std=1,
+    #     center_box=(-10.0, 10.0),
+    #     shuffle=True,
+    #     random_state=1,
+    # )  # For reproducibility
+
+    X = lm_scoring.to_numpy()
+    # range_n_clusters = [2, 3, 4, 5, 6]
+    range_n_clusters = np.arange(2, 31, 1)
+    range_th = np.arange(0.1, 2.1, 0.1)
+    for n_clusters in range_n_clusters:
+        # Create a subplot with 1 row and 2 columns
+        fig, (ax1, ax2) = plt.subplots(1, 2)
+        fig.set_size_inches(18, 7)
+
+        # Agglo
+        # clusterer = AgglomerativeClustering(distance_threshold=th, n_clusters=None)
+        clusterer = AgglomerativeClustering(n_clusters=n_clusters)
+        cluster_labels = clusterer.fit_predict(X)
+        # n_clusters = np.max(cluster_labels)
+
+        # The 1st subplot is the silhouette plot
+        # The silhouette coefficient can range from -1, 1 but in this example all
+        # lie within [-0.1, 1]
+        ax1.set_xlim([-0.1, 1])
+        # The (n_clusters+1)*10 is for inserting blank space between silhouette
+        # plots of individual clusters, to demarcate them clearly.
+        ax1.set_ylim([0, len(X) + (n_clusters + 1) * 10])
+
+        # Initialize the clusterer with n_clusters value and a random generator
+        # seed of 10 for reproducibility.
+        # clusterer = KMeans(n_clusters=n_clusters, random_state=10)
+        # cluster_labels = clusterer.fit_predict(X)
+
+
+        # cluster_count = np.max(clusters)
+        # score = silhouette_score(X, model.labels_, metric='euclidean')
+
+        # The silhouette_score gives the average value for all the samples.
+        # This gives a perspective into the density and separation of the formed
+        # clusters
+        silhouette_avg = silhouette_score(X, cluster_labels)
+        print(
+            "For n_clusters =",
+            n_clusters,
+            "The average silhouette_score is :",
+            silhouette_avg,
+        )
+
+        # Compute the silhouette scores for each sample
+        sample_silhouette_values = silhouette_samples(X, cluster_labels)
+
+        y_lower = 10
+        for i in range(n_clusters):
+            # Aggregate the silhouette scores for samples belonging to
+            # cluster i, and sort them
+            ith_cluster_silhouette_values = sample_silhouette_values[cluster_labels == i]
+
+            ith_cluster_silhouette_values.sort()
+
+            size_cluster_i = ith_cluster_silhouette_values.shape[0]
+            y_upper = y_lower + size_cluster_i
+
+            color = cm.nipy_spectral(float(i) / n_clusters)
+            ax1.fill_betweenx(
+                np.arange(y_lower, y_upper),
+                0,
+                ith_cluster_silhouette_values,
+                facecolor=color,
+                edgecolor=color,
+                alpha=0.7,
+            )
+
+            # Label the silhouette plots with their cluster numbers at the middle
+            ax1.text(-0.05, y_lower + 0.5 * size_cluster_i, str(i))
+
+            # Compute the new y_lower for next plot
+            y_lower = y_upper + 10  # 10 for the 0 samples
+
+        ax1.set_title("The silhouette plot for the various clusters.")
+        ax1.set_xlabel("The silhouette coefficient values")
+        ax1.set_ylabel("Cluster label")
+
+        # The vertical line for average silhouette score of all the values
+        ax1.axvline(x=silhouette_avg, color="red", linestyle="--")
+
+        ax1.set_yticks([])  # Clear the yaxis labels / ticks
+        ax1.set_xticks([-0.1, 0, 0.2, 0.4, 0.6, 0.8, 1])
+
+        # 2nd Plot showing the actual clusters formed
+        colors = cm.nipy_spectral(cluster_labels.astype(float) / n_clusters)
+        ax2.scatter(
+            X[:, 2], X[:, 3], marker=".", s=30, lw=0, alpha=0.7, c=colors, edgecolor="k"
+        )
+
+        # Labeling the clusters
+        # centers = clusterer.cluster_centers_
+        # Draw white circles at cluster centers
+        # ax2.scatter(
+        #     centers[:, 0],
+        #     centers[:, 1],
+        #     marker="o",
+        #     c="white",
+        #     alpha=1,
+        #     s=200,
+        #     edgecolor="k",
+        # )
+
+        # for i, c in enumerate(centers):
+        #     ax2.scatter(c[0], c[1], marker="$%d$" % i, alpha=1, s=50, edgecolor="k")
+
+        ax2.set_title("The visualization of the clustered data.")
+        ax2.set_xlabel("Feature space for the 1st feature")
+        ax2.set_ylabel("Feature space for the 2nd feature")
+
+        # plt.suptitle(
+        #     "Silhouette analysis for KMeans clustering on sample data with n_clusters = %d"
+        #     % n_clusters,
+        #     fontsize=14,
+        #     fontweight="bold",
+        # )
+        plt.suptitle(f'n_clusters={n_clusters}, mean score={silhouette_avg:.3f}', fontsize=10, fontweight='bold')
+
+        fig.savefig(f'{base_dir}/figs/clusters_{n_clusters}.jpg', dpi=300)
+        plt.close(fig)
+        # print(f'Stored Fig for cluster count: {n_clusters}')
+    # plt.show()
+    embed()
+    exit()
 
 
 def plot_dendrogram(model, **kwargs):
@@ -43,7 +213,7 @@ def plot_dendrogram(model, **kwargs):
     dendrogram(linkage_matrix, **kwargs)
 
 
-def compute_pca(data, labels, wh=False, show=True):
+def compute_pca(data, labels=0, wh=False, show=True):
     pca = PCA(n_components=3, whiten=wh)
     pca.fit(data.T)
     explained_variance_ratio = pca.explained_variance_ratio_
@@ -53,11 +223,14 @@ def compute_pca(data, labels, wh=False, show=True):
 
     fig = plt.figure()
     ax = fig.add_subplot(projection='3d')
-    s_plot = ax.scatter(components[0], components[1], components[2], c=labels, cmap='tab10')
+    if labels is int():
+        s_plot = ax.scatter(components[0], components[1], components[2])
+    else:
+        s_plot = ax.scatter(components[0], components[1], components[2], c=labels, cmap='tab10')
+        plt.colorbar(s_plot)
     ax.set_xlabel(f'PC1 ({explained_variance_ratio[0]:.2f})')
     ax.set_ylabel(f'PC2 ({explained_variance_ratio[1]:.2f})')
     ax.set_zlabel(f'PC3 ({explained_variance_ratio[2]:.2f})')
-    plt.colorbar(s_plot)
     if show:
         plt.show()
 
@@ -77,7 +250,15 @@ def compute_clustering():
 
     # Average over trials (if stimulus type has multiple trials)
     lm_scoring_averaged = average_over_trials(data=lm_scoring_long)
-    lm_scoring = lm_scoring_averaged.pivot_table(index='roi', columns='stimulus_id', values='score')
+
+    # Sort by R squared values
+    r_th = 0.1
+    lm_scoring_selected = sort_by_r(lm_scoring_averaged, r_th=r_th)
+
+    lm_scoring = lm_scoring_selected.pivot_table(index='roi', columns='stimulus_id', values='score')
+
+    # Set minus values to zero
+    lm_scoring[lm_scoring < 0] = 0
     # d = mean_lm_scoring.copy()
     stimulus_types = list(lm_scoring.keys())
 
@@ -117,18 +298,18 @@ def compute_clustering():
         optimal_ordering=True
     )
 
-    # matrix = linkage(
-    #     data,
-    #     method='average',
-    #     metric='correlation',
-    #     optimal_ordering=True
-    # )
+    matrix = linkage(
+        data,
+        method='average',
+        metric='correlation',
+        optimal_ordering=True
+    )
 
     # Plot Dendrogram
     # default color threshold: 0.7 * np.max(matrix[:, 2])
     plt.figure()
     dn = dendrogram(matrix, truncate_mode="level", p=0, distance_sort=True, show_leaf_counts=True,
-                    color_threshold=0.3 * np.max(matrix[:, 2]))
+                    color_threshold=0.7 * np.max(matrix[:, 2]))
     plt.title('Dendrogram2')
 
     plt.show()
@@ -136,7 +317,7 @@ def compute_clustering():
     # --------------------------------------
     # Assign cluster labels (Stimulus IDs)
     labels = fcluster(
-        matrix, t=10,
+        matrix, t=4,
         criterion='maxclust'
     )
 
@@ -167,6 +348,21 @@ def compute_clustering():
     ax.set_zlabel(z)
     plt.show()
 
+    # 2D Scatter
+    fig, ax = plt.subplots()
+    x = 'grating_0'
+    y = 'grating_180'
+    ax.scatter(data_plotting[x], data_plotting[y], c=labels, cmap='viridis')
+    # ax.scatter(data_plotting[x], data_plotting[y])
+    # ax.plot([0, 0], [0, 1], 'k')
+    # ax.plot([0, 1], [0, 0], 'k')
+    ax.set_xlim(-0.2, 1)
+    ax.set_ylim(-0.2, 1)
+
+    ax.set_xlabel(x)
+    ax.set_ylabel(y)
+    plt.show()
+
     # --------
     # PCA of the Scores to reduce dimensions (number of resulting clusters)
     compute_pca(data, labels, wh=False, show=True)
@@ -176,7 +372,13 @@ def compute_clustering():
     sns.clustermap(data.T, method='ward')
     plt.show()
 
-    sns.clustermap(data.T, z_score=1, vmin=-3, vmax=4, cmap='afmhot', row_cluster=False, col_cluster=True,
+    sns.clustermap(data.T, z_score=1, method='ward', metric='euclidean', vmin=-1, vmax=4, cmap='afmhot', row_cluster=False, col_cluster=True,
+                   dendrogram_ratio=(.1, .3),
+                   cbar_pos=(0.02, .2, .03, .4),
+                   figsize=(10, 5)
+                   )
+
+    sns.clustermap(data.T, z_score=1, method='complete', metric='cosine', vmin=-1, vmax=4, cmap='afmhot', row_cluster=False, col_cluster=True,
                    dendrogram_ratio=(.1, .3),
                    cbar_pos=(0.02, .2, .03, .4),
                    figsize=(10, 5)
@@ -204,19 +406,48 @@ def compute_clustering():
     sns.clustermap(lm_scoring, robust=True)
     plt.show()
 
+    # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     # SK LEARN PACKAGE
     # # X = np.array([[1, 2], [1, 4], [1, 0], [4, 2], [4, 4], [4, 0]])
     # setting distance_threshold=0 ensures we compute the full tree.
-    model = AgglomerativeClustering(distance_threshold=0, n_clusters=None)
-    # model = AgglomerativeClustering(n_clusters=10)
-    model = model.fit(data)
+    th_range = np.arange(0.1, 3.05, 0.05)
+    results = []
+    for th in th_range:
+        model = AgglomerativeClustering(affinity='l1', linkage='average', distance_threshold=th, n_clusters=None)
+        # model = AgglomerativeClustering(n_clusters=50)
+        # model_fit = model.fit(data)
+        clusters = model.fit_predict(data)
+        cluster_count = np.max(clusters)
+        score = silhouette_score(data, model.labels_, metric='euclidean')
+        entry = [th, cluster_count, score]
+        results.append(entry)
+        print(f'threshold: {th:.2f}, cluster: {cluster_count}, score: {score:.4f}')
+    results = pd.DataFrame(results, columns=['th', 'cluster_count', 'score'])
+
+    plt.scatter(results['cluster_count'], results['score'], c=results['th'])
+    plt.xlabel('cluster count')
+    plt.ylabel('score')
+    plt.show()
 
     plt.figure()
     plt.title("Hierarchical Clustering Dendrogram")
     # plot the top three levels of the dendrogram
-    plot_dendrogram(model, truncate_mode="level", p=4, distance_sort=True, show_leaf_counts=True)
+    plot_dendrogram(model, truncate_mode="level", p=0, distance_sort=True, show_leaf_counts=True)
     plt.xlabel("Number of points in node (or index of point if no parenthesis).")
     plt.show()
+
+    # ++++++++++++++++++++
+    # # FeatureAgglomeration
+    # agglo = FeatureAgglomeration(n_clusters=5)
+    # agglo_model = agglo.fit(data)
+    # data_reduced = agglo_model.transform(data)
+    # data_restored = agglo.inverse_transform(data_reduced)
+    #
+    # # PCA of the Scores to reduce dimensions (number of resulting clusters)
+    # compute_pca(data, labels=False, wh=False, show=False)
+    # compute_pca(data_reduced, labels=False, wh=False, show=False)
+    # compute_pca(data_restored, labels=False, wh=False, show=False)
+    # plt.show()
 
     # NOTES
     # The FeatureAgglomeration uses agglomerative clustering to group together features that look very similar,
@@ -940,9 +1171,14 @@ def average_over_trials(data):
         for s_name in stimulus_types:
             if (s_name == 'movingtargetsmall') or (s_name == 'movingtargetlarge'):
                 idx = (data['stimulus_type'] == s_name) * (data['roi'] == roi)
-                m_score = data[idx]['score'].mean()
-                m_lag = data[idx]['lag'].mean()
-                new_entry = [roi, s_name, s_name, 0, m_score, m_lag]
+                # m_score = data[idx]['score'].mean()
+                # m_lag = data[idx]['lag'].mean()
+                # Weighted Mean
+                m_score = np.average(data[idx]['score'], weights=data[idx]['r_squared'])
+                m_lag = np.average(data[idx]['lag'], weights=data[idx]['r_squared'])
+                m_r = data[idx]['r_squared'].mean()
+                m_slope = data[idx]['slope'].mean()
+                new_entry = [roi, s_name, s_name, 0, m_score, m_r, m_slope, m_lag]
                 new_data.append(new_entry)
             if s_name == 'flash':
                 idx = (data['stimulus_type'] == s_name) * (data['roi'] == roi)
@@ -957,21 +1193,25 @@ def average_over_trials(data):
                 # Get ON and OFF Flash Weighted Mean Score and Lag (weighted by r square values)
                 on_mean = np.average(dummy[dummy['info'] == 'ON']['score'], weights=dummy[dummy['info'] == 'ON']['r_squared'])
                 on_lag = np.average(dummy[dummy['info'] == 'ON']['lag'], weights=dummy[dummy['info'] == 'ON']['r_squared'])
+                on_r = dummy[dummy['info'] == 'ON']['r_squared'].mean()
+                on_slope = dummy[dummy['info'] == 'ON']['slope'].mean()
+
                 off_mean = np.average(dummy[dummy['info'] == 'OFF']['score'], weights=dummy[dummy['info'] == 'OFF']['r_squared'])
                 off_lag = np.average(dummy[dummy['info'] == 'OFF']['lag'], weights=dummy[dummy['info'] == 'OFF']['r_squared'])
+                off_r = dummy[dummy['info'] == 'OFF']['r_squared'].mean()
+                off_slope = dummy[dummy['info'] == 'OFF']['slope'].mean()
 
-                new_entry_on = [roi, f'{s_name}_ON', s_name, 'ON', on_mean, on_lag]
-                new_entry_off = [roi, f'{s_name}_OFF', s_name, 'OFF', off_mean, off_lag]
+                new_entry_on = [roi, f'{s_name}_ON', s_name, 'ON', on_mean, on_r, on_slope, on_lag]
+                new_entry_off = [roi, f'{s_name}_OFF', s_name, 'OFF', off_mean, off_r, off_slope, off_lag]
                 new_data.append(new_entry_on)
                 new_data.append(new_entry_off)
-    mean_scores_df = pd.DataFrame(new_data, columns=['roi', 'stimulus_id', 'stimulus_type', 'info', 'score', 'lag'])
+    mean_scores_df = pd.DataFrame(new_data, columns=['roi', 'stimulus_id', 'stimulus_type', 'info', 'score', 'r_squared', 'slope', 'lag'])
     # Now add the other original entries that do not need averaging
     looms = data[data['stimulus_type'] == 'looming']
     looms_rev = data[data['stimulus_type'] == 'looming_rev']
     gratings = data[data['stimulus_type'] == 'grating']
     results = pd.concat([mean_scores_df, looms, looms_rev, gratings]).drop(columns='trial')
     results = results.sort_values(by='roi').reset_index(drop=True)
-
     # roi_names = data['roi'].unique()
     # stimulus_types = data['stimulus_type'].unique()
     # new_data = []
@@ -1224,6 +1464,7 @@ def print_options():
     print('6: Ventral Root Activity Detection')
     print('7: Run Clustering')
     print('8: LM Scoring for Ventral Root')
+    print('9: Run Silhouette Analysis')
 
     print('')
     print('To see options type: >> options')
@@ -1254,6 +1495,8 @@ if __name__ == '__main__':
             compute_clustering()
         elif usr == '8':
             reg_analysis_ventral_root()
+        elif usr == '9':
+            sil()
         elif usr == 'options':
             print_options()
         elif usr == 'exit':
