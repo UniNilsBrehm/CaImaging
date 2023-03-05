@@ -10,15 +10,108 @@ from IPython import embed
 from scipy.signal import hilbert
 import scipy.signal as sig
 from sklearn.linear_model import LinearRegression
-from sklearn.cluster import AgglomerativeClustering, FeatureAgglomeration, KMeans
+from sklearn.cluster import AgglomerativeClustering, FeatureAgglomeration, KMeans, AffinityPropagation
 from sklearn.datasets import make_blobs
 from sklearn.metrics import silhouette_samples, silhouette_score
+from sklearn import metrics
 from scipy.cluster.hierarchy import dendrogram, linkage, fcluster
 from scipy.cluster.vq import whiten
 from sklearn.decomposition import PCA
 from pylab import cm as color_maps
 import seaborn as sns
 import matplotlib.cm as cm
+import random
+
+
+def sort_out_clusters_by_members(data, labels, member_th, n_clusters):
+    # member_th: minimal number of members of a cluster to keep it
+    keep_clusters = []
+    keep_rois = []
+    for k in range(n_clusters):
+        idx = np.where(labels == k)[0]
+        member_count = np.sum(labels == k)
+        if member_count >= member_th:
+            keep_clusters.append(k)
+            keep_rois.extend(idx)
+    print(f'Keep {len(keep_clusters)} / {n_clusters} clusters')
+    print(f'Keep {len(keep_rois)} / {data.shape[0]} ROIs')
+
+    return data.iloc[keep_rois].sort_values(by='roi')
+
+
+def affinity_propagation_clustering(lm_scoring):
+    # msg_box('CLUSTERING', 'STARTING CLUSTERING', sep='-')
+    # Tk().withdraw()
+    # base_dir = askdirectory()
+    # file_list = os.listdir(base_dir)
+    #
+    # lm_scoring_file_name = [s for s in os.listdir(base_dir) if 'linear_model_stimulus_scoring' in s][0]
+    # lm_scoring_long = pd.read_csv(f'{base_dir}/{lm_scoring_file_name}')
+    # # Average over trials (if stimulus type has multiple trials)
+    # lm_scoring_averaged = average_over_trials(data=lm_scoring_long)
+    # # Sort by R squared values
+    # r_th = 0.3
+    # lm_scoring_selected = sort_by_r(lm_scoring_averaged, r_th=r_th)
+    # # Convert from long to wide format
+    # lm_scoring = lm_scoring_selected.pivot_table(index='roi', columns='stimulus_id', values='score')
+    # # Set minus values to zero
+    # lm_scoring[lm_scoring < 0] = 0
+    # stimulus_types = list(lm_scoring.keys())
+
+    # Affinity Propagation Clustering
+    # d = lm_scoring[['grating_0', 'grating_180', 'grating_90', 'grating_270', 'movingtargetsmall', 'movingtargetlarge']]
+    data = lm_scoring.to_numpy()
+    clustering = AffinityPropagation(random_state=5).fit(data)
+    cluster_centers_indices = clustering.cluster_centers_indices_
+    labels = clustering.labels_
+    n_clusters_ = len(cluster_centers_indices)
+    print(f"Estimated number of clusters: {n_clusters_}")
+    print(f"Silhouette Coefficient: {metrics.silhouette_score(data, labels, metric='sqeuclidean'):.3f}")
+
+    member_th = 5
+    keep_clusters = []
+    keep_rois = []
+    for k in range(n_clusters_):
+        idx = np.where(labels == k)[0]
+        member_count = np.sum(labels == k)
+        if member_count >= member_th:
+            keep_clusters.append(k)
+            keep_rois.extend(idx)
+    print(f'Keep {len(keep_clusters)} / {n_clusters_} clusters')
+    print(f'Keep {len(keep_rois)} / {data.shape[0]} ROIs')
+
+    aff_prop_data_selected = lm_scoring.iloc[keep_rois].sort_values(by='roi')
+
+    # print("Homogeneity: %0.3f" % metrics.homogeneity_score(labels_true, labels))
+    # print("Completeness: %0.3f" % metrics.completeness_score(labels_true, labels))
+    # print("V-measure: %0.3f" % metrics.v_measure_score(labels_true, labels))
+    # print("Adjusted Rand Index: %0.3f" % metrics.adjusted_rand_score(labels_true, labels))
+    # print(
+    #     "Adjusted Mutual Information: %0.3f"
+    #     % metrics.adjusted_mutual_info_score(labels_true, labels)
+    # )
+
+    # plt.figure()
+    # colors = plt.cycler("color", plt.cm.viridis(np.linspace(0, 1, 4)))
+    # feature1 = 2
+    # feature2 = 3
+    # for k, col in zip(range(n_clusters_), colors):
+    #     class_members = labels == k
+    #     cluster_center = data[cluster_centers_indices[k]]
+    #     plt.scatter(
+    #         data[class_members, feature1], data[class_members, feature2], color=col["color"], marker="."
+    #     )
+    #     plt.scatter(
+    #         cluster_center[feature1], cluster_center[feature2], s=14, color=col["color"], marker="o"
+    #     )
+    #     for x in data[class_members]:
+    #         plt.plot(
+    #             [cluster_center[feature1], x[feature1]], [cluster_center[feature2], x[feature2]], color=col["color"]
+    #         )
+    #
+    # plt.title("Estimated number of clusters: %d" % n_clusters_)
+    # plt.show()
+    return aff_prop_data_selected
 
 
 def sort_by_r(data, r_th):
@@ -38,18 +131,29 @@ def sil():
     msg_box('CLUSTERING', 'STARTING CLUSTERING', sep='-')
     Tk().withdraw()
     base_dir = askdirectory()
+    file_list = os.listdir(base_dir)
 
     lm_scoring_file_name = [s for s in os.listdir(base_dir) if 'linear_model_stimulus_scoring' in s][0]
     lm_scoring_long = pd.read_csv(f'{base_dir}/{lm_scoring_file_name}')
 
+    # Convert Long to wide format (needed for clustering)
+    # lm_scoring = lm_scoring_long.pivot_table(index='roi', columns='stimulus_id', values='score')
+    # stimulus_ids = list(lm_scoring.keys())
+
     # Average over trials (if stimulus type has multiple trials)
     lm_scoring_averaged = average_over_trials(data=lm_scoring_long)
-    stimulus_types = lm_scoring_averaged['stimulus_id'].unique()
 
-    # Sort out low R squared values
+    # Sort by R squared values
+    r_th = 0.1
+    lm_scoring_selected = sort_by_r(lm_scoring_averaged, r_th=r_th)
 
-    test = lm_scoring_averaged.pivot_table(index='roi', columns='stimulus_id', values='score')
     lm_scoring = lm_scoring_selected.pivot_table(index='roi', columns='stimulus_id', values='score')
+
+    # Set minus values to zero
+    lm_scoring[lm_scoring < 0] = 0
+    # d = mean_lm_scoring.copy()
+    stimulus_types = list(lm_scoring.keys())
+
     embed()
     exit()
     # Generating the sample data from make_blobs
@@ -276,10 +380,15 @@ def compute_clustering():
     plt.tight_layout()
     plt.show()
 
+    # +++++++++++++++++++++++++++++++++++++++
+    # COMPUTE AFFINITY PROPAGATION CLUSTERING
+
+    aff_data = affinity_propagation_clustering(lm_scoring)
 
     # standardize (normalize) the features
     # data = whiten(mean_lm_scoring)
     data = lm_scoring.copy()
+    data = aff_data.copy()
     embed()
     exit()
     # COMPUTE CLUSTERING
@@ -291,12 +400,12 @@ def compute_clustering():
     # see: https://docs.scipy.org/doc/scipy/reference/generated/scipy.cluster.hierarchy.linkage.html
 
     # Compute the distance matrix
-    matrix = linkage(
-        data,
-        method='ward',
-        metric='euclidean',
-        optimal_ordering=True
-    )
+    # matrix = linkage(
+    #     data,
+    #     method='ward',
+    #     metric='euclidean',
+    #     optimal_ordering=True
+    # )
 
     matrix = linkage(
         data,
@@ -317,7 +426,7 @@ def compute_clustering():
     # --------------------------------------
     # Assign cluster labels (Stimulus IDs)
     labels = fcluster(
-        matrix, t=4,
+        matrix, t=10,
         criterion='maxclust'
     )
 
@@ -337,8 +446,8 @@ def compute_clustering():
     # plt.show()
 
     x = 'grating_180'
-    y = 'looming'
-    z = 'grating_0'
+    y = 'flash_ON'
+    z = 'movingtargetlarge'
 
     fig = plt.figure()
     ax = fig.add_subplot(projection='3d')
@@ -369,16 +478,22 @@ def compute_clustering():
 
     # ----------------------------------
     # Seaborn has a plotting function that includes a hierarchically-clustered heatmap (based on scipy)
-    sns.clustermap(data.T, method='ward')
+
+    data_idx = list(np.arange(0, data.shape[0]+1, 1))
+    idx = random.sample(data_idx, 100)
+    data_reduced = data.iloc[idx]
+
+    sns.clustermap(data.T, method='ward', metric='euclidean')
     plt.show()
 
-    sns.clustermap(data.T, z_score=1, method='ward', metric='euclidean', vmin=-1, vmax=4, cmap='afmhot', row_cluster=False, col_cluster=True,
+    sns.clustermap(data.T, z_score=1, method='ward', metric='euclidean', vmin=-2, vmax=4, cmap='afmhot', row_cluster=False, col_cluster=True,
                    dendrogram_ratio=(.1, .3),
                    cbar_pos=(0.02, .2, .03, .4),
                    figsize=(10, 5)
                    )
+    plt.show()
 
-    sns.clustermap(data.T, z_score=1, method='complete', metric='cosine', vmin=-1, vmax=4, cmap='afmhot', row_cluster=False, col_cluster=True,
+    sns.clustermap(data.T, z_score=1, method='average', metric='correlation', vmin=-2, vmax=4, cmap='afmhot', row_cluster=False, col_cluster=True,
                    dendrogram_ratio=(.1, .3),
                    cbar_pos=(0.02, .2, .03, .4),
                    figsize=(10, 5)
@@ -408,31 +523,58 @@ def compute_clustering():
 
     # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     # SK LEARN PACKAGE
+    # Distance Metric available:
+    # ‘braycurtis’, ‘canberra’, ‘chebyshev’, ‘cityblock’, ‘correlation’, ‘cosine’, ‘dice’, ‘euclidean’, ‘hamming’,
+    # ‘jaccard’, ‘jensenshannon’, ‘kulczynski1’, ‘mahalanobis’, ‘matching’, ‘minkowski’, ‘rogerstanimoto’,
+    # ‘russellrao’, ‘seuclidean’, ‘sokalmichener’, ‘sokalsneath’, ‘sqeuclidean’, ‘yule’.
     # # X = np.array([[1, 2], [1, 4], [1, 0], [4, 2], [4, 4], [4, 0]])
     # setting distance_threshold=0 ensures we compute the full tree.
     th_range = np.arange(0.1, 3.05, 0.05)
+    th = 0
+    n_clusters = np.arange(2, 51, 1)
+    # all_metrics = ["braycurtis", "canberra", "chebyshev", "cityblock", "correlation", "cosine", "dice", "euclidean", "hamming",
+    # "jaccard", "jensenshannon", "mahalanobis", "matching", "minkowski", "rogerstanimoto",
+    # "russellrao", "seuclidean", "sokalmichener", "sokalsneath", "sqeuclidean", "yule"]
+    #
+    metric = 'correlation'
     results = []
-    for th in th_range:
-        model = AgglomerativeClustering(affinity='l1', linkage='average', distance_threshold=th, n_clusters=None)
+    for n in n_clusters:
+        # model = AgglomerativeClustering(affinity='correlation', linkage='average', distance_threshold=th, n_clusters=None)
+        model = AgglomerativeClustering(affinity=metric, linkage='average', n_clusters=n)
         # model = AgglomerativeClustering(n_clusters=50)
         # model_fit = model.fit(data)
         clusters = model.fit_predict(data)
         cluster_count = np.max(clusters)
-        score = silhouette_score(data, model.labels_, metric='euclidean')
+        score = silhouette_score(data, model.labels_, metric='correlation')
         entry = [th, cluster_count, score]
         results.append(entry)
-        print(f'threshold: {th:.2f}, cluster: {cluster_count}, score: {score:.4f}')
+        # print(f'threshold: {th:.2f}, cluster: {cluster_count}, score: {score:.4f}')
     results = pd.DataFrame(results, columns=['th', 'cluster_count', 'score'])
 
-    plt.scatter(results['cluster_count'], results['score'], c=results['th'])
+    # plt.scatter(results['cluster_count'], results['score'], c=results['th'])
+    plt.plot(results['cluster_count'], results['score'], '.--', label=metric)
     plt.xlabel('cluster count')
     plt.ylabel('score')
+
+    plt.legend()
     plt.show()
+
+    # +++++++++++++++
+    # distance_th = 0.5
+    n_clusters = 26
+    model = AgglomerativeClustering(affinity='correlation', linkage='average', compute_distances=True, n_clusters=n_clusters)
+    clusters = model.fit(data)
+    print(f'Clusters: {clusters.n_clusters_}')
+
+    # Sort out clusters with only a few members
+    new_data = sort_out_clusters_by_members(data, labels, member_th=20, n_clusters=n_clusters)
 
     plt.figure()
     plt.title("Hierarchical Clustering Dendrogram")
     # plot the top three levels of the dendrogram
+    # plot_dendrogram(model, truncate_mode="level", p=0, distance_sort=True, show_leaf_counts=True, color_threshold=distance_th)
     plot_dendrogram(model, truncate_mode="level", p=0, distance_sort=True, show_leaf_counts=True)
+
     plt.xlabel("Number of points in node (or index of point if no parenthesis).")
     plt.show()
 
@@ -1465,7 +1607,7 @@ def print_options():
     print('7: Run Clustering')
     print('8: LM Scoring for Ventral Root')
     print('9: Run Silhouette Analysis')
-
+    print('10: Run Affinity Propagation Clustering')
     print('')
     print('To see options type: >> options')
     print('To exit type: >> exit')
@@ -1497,6 +1639,8 @@ if __name__ == '__main__':
             reg_analysis_ventral_root()
         elif usr == '9':
             sil()
+        elif usr =='10':
+            affinity_propagation_clustering()
         elif usr == 'options':
             print_options()
         elif usr == 'exit':
