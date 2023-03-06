@@ -21,7 +21,99 @@ from pylab import cm as color_maps
 import seaborn as sns
 import matplotlib.cm as cm
 import random
+import sklearn.cluster as cluster
+import time
 
+
+def plot_clusters(data, algorithm, args, kwds):
+    plot_kwds = {'alpha': 0.25, 's': 80, 'linewidths': 0}
+    start_time = time.time()
+    labels = algorithm(*args, **kwds).fit_predict(data)
+    n_clusters = len(np.unique(labels))
+    end_time = time.time()
+    # palette = sns.color_palette('deep', np.unique(labels).max() + 1)
+    # colors = [palette[x] if x >= 0 else (0.0, 0.0, 0.0) for x in labels]
+    # plt.scatter(data.T[2], data.T[3], c=colors, **plot_kwds)
+    # frame = plt.gca()
+    # frame.axes.get_xaxis().set_visible(False)
+    # frame.axes.get_yaxis().set_visible(False)
+    # plt.title('Clusters found by {}'.format(str(algorithm.__name__)), fontsize=24)
+    # plt.text(-0.5, 0.7, 'Clustering took {:.2f} s'.format(end_time - start_time), fontsize=14)
+    print(f'Clustering took {end_time - start_time:.2f} s')
+    print(f'Found: {n_clusters} clusters')
+    silhouette_avg = silhouette_score(data, labels)
+    print(f'Silhouette Score: {silhouette_avg:.3f}')
+    # plt.show()
+
+    x = 'grating_180'
+    y = 'grating_0'
+    z = 'movingtargetlarge'
+
+    fig = plt.figure()
+    ax = fig.add_subplot(projection='3d')
+    ax.scatter(data[x], data[y], data[z], c=labels, cmap='viridis')
+    ax.set_xlabel(x)
+    ax.set_ylabel(y)
+    ax.set_zlabel(z)
+    plt.show()
+    return labels
+
+
+def clustering_algorithms_test():
+    msg_box('CLUSTERING', 'STARTING CLUSTERING', sep='-')
+    Tk().withdraw()
+    base_dir = askdirectory()
+    file_list = os.listdir(base_dir)
+
+    lm_scoring_file_name = [s for s in os.listdir(base_dir) if 'linear_model_stimulus_scoring' in s][0]
+    lm_scoring_long = pd.read_csv(f'{base_dir}/{lm_scoring_file_name}')
+
+    # Convert Long to wide format (needed for clustering)
+    # lm_scoring = lm_scoring_long.pivot_table(index='roi', columns='stimulus_id', values='score')
+    # stimulus_ids = list(lm_scoring.keys())
+
+    # Average over trials (if stimulus type has multiple trials)
+    lm_scoring_averaged = average_over_trials(data=lm_scoring_long)
+
+    # Sort by R squared values
+    r_th = 0.1
+    lm_scoring_selected = sort_by_r(lm_scoring_averaged, r_th=r_th)
+
+    lm_scoring = lm_scoring_selected.pivot_table(index='roi', columns='stimulus_id', values='score')
+
+    # Set minus values to zero
+    lm_scoring[lm_scoring < 0] = 0
+    # d = mean_lm_scoring.copy()
+    stimulus_types = list(lm_scoring.keys())
+    data = lm_scoring.copy()
+    embed()
+    exit()
+    # K-Means
+    plot_clusters(data, cluster.KMeans, (), {'n_clusters': 30})
+
+    # Affinity Propagation
+    plot_clusters(data, cluster.AffinityPropagation, (), {'preference':-5.0, 'damping':0.95, 'random_state': 0})
+
+    # Mean Shift
+    plot_clusters(data, cluster.MeanShift, (), {'cluster_all': False, 'bandwidth': 0.175})
+
+    # Spectral Clustering
+    plot_clusters(data, cluster.SpectralClustering, (), {'n_clusters': 6})
+
+    # Agglomerative Clustering
+    plot_clusters(data, cluster.AgglomerativeClustering, (), {'n_clusters': 20, 'linkage': 'ward'})
+
+    # DBSCAN
+    l = plot_clusters(data, cluster.DBSCAN, (), {'eps': 0.5})
+
+    # HDBSCAN
+    import hdbscan
+    plot_clusters(data, hdbscan.HDBSCAN, (), {'min_cluster_size': 3})
+
+    clusterer = hdbscan.HDBSCAN(min_cluster_size=3, gen_min_span_tree=True).fit(data)
+    clusterer.condensed_tree_.plot(select_clusters=True, selection_palette=sns.color_palette('deep', 8))
+    # clusterer.single_linkage_tree_.plot()
+    plt.show()
 
 def sort_out_clusters_by_members(data, labels, member_th, n_clusters):
     # member_th: minimal number of members of a cluster to keep it
@@ -346,7 +438,11 @@ def compute_clustering():
     file_list = os.listdir(base_dir)
 
     lm_scoring_file_name = [s for s in os.listdir(base_dir) if 'linear_model_stimulus_scoring' in s][0]
-    lm_scoring_long = pd.read_csv(f'{base_dir}/{lm_scoring_file_name}')
+    lm_scoring_vr_file_name = [s for s in os.listdir(base_dir) if 'linear_model_ventral_root_scoring' in s][0]
+
+    lm_scoring_stimulus_long = pd.read_csv(f'{base_dir}/{lm_scoring_file_name}')
+    lm_scoring_vr_long = pd.read_csv(f'{base_dir}/{lm_scoring_vr_file_name}')
+    lm_scoring_long = pd.concat([lm_scoring_stimulus_long, lm_scoring_vr_long]).sort_values(by='roi').reset_index(drop=True)
 
     # Convert Long to wide format (needed for clustering)
     # lm_scoring = lm_scoring_long.pivot_table(index='roi', columns='stimulus_id', values='score')
@@ -360,13 +456,19 @@ def compute_clustering():
     lm_scoring_selected = sort_by_r(lm_scoring_averaged, r_th=r_th)
 
     lm_scoring = lm_scoring_selected.pivot_table(index='roi', columns='stimulus_id', values='score')
+    lm_scoring_r_squared = lm_scoring_selected.pivot_table(index='roi', columns='stimulus_id', values='r_squared')
+    lm_scoring_slope = lm_scoring_selected.pivot_table(index='roi', columns='stimulus_id', values='slope')
 
     # Set minus values to zero
     lm_scoring[lm_scoring < 0] = 0
+    lm_scoring_slope[lm_scoring_slope < 0] = 0
+
     # d = mean_lm_scoring.copy()
     stimulus_types = list(lm_scoring.keys())
+    embed()
+    exit()
 
-    fig, axs = plt.subplots(5, 2)
+    fig, axs = plt.subplots(4, 3)
     axs = axs.flatten()
     th = 0.2
     for k, ax in zip(stimulus_types, axs):
@@ -384,13 +486,38 @@ def compute_clustering():
     # COMPUTE AFFINITY PROPAGATION CLUSTERING
 
     aff_data = affinity_propagation_clustering(lm_scoring)
+    aff_data_r = affinity_propagation_clustering(lm_scoring_r_squared)
+    aff_data_slope = affinity_propagation_clustering(lm_scoring_slope)
 
     # standardize (normalize) the features
     # data = whiten(mean_lm_scoring)
+
     data = lm_scoring.copy()
     data = aff_data.copy()
+
+    data = lm_scoring_r_squared.copy()
+    data = aff_data_r.copy()
+
+    data = aff_data_slope
+    data = lm_scoring_slope
     embed()
     exit()
+
+    sns.clustermap(data.T, method='average', metric='correlation', vmin=0, vmax=1, cmap='afmhot', row_cluster=False, col_cluster=True,
+                   dendrogram_ratio=(.1, .3),
+                   cbar_pos=(0.02, .2, .03, .4),
+                   figsize=(10, 5)
+                   )
+    plt.show()
+
+
+    # DBSCAN
+    model = cluster.DBSCAN(eps=0.5, min_samples=2).fit(data.to_numpy())
+    labels = cluster.DBSCAN(eps=0.08, min_samples=2).fit_predict(data)
+    silhouette_avg = silhouette_score(data, labels)
+
+    n_clusters = len(np.unique(labels))
+
     # COMPUTE CLUSTERING
     # Distance Metric available:
     # ‘braycurtis’, ‘canberra’, ‘chebyshev’, ‘cityblock’, ‘correlation’, ‘cosine’, ‘dice’, ‘euclidean’, ‘hamming’,
@@ -426,7 +553,7 @@ def compute_clustering():
     # --------------------------------------
     # Assign cluster labels (Stimulus IDs)
     labels = fcluster(
-        matrix, t=10,
+        matrix, t=3,
         criterion='maxclust'
     )
 
@@ -445,9 +572,9 @@ def compute_clustering():
     # )
     # plt.show()
 
-    x = 'grating_180'
-    y = 'flash_ON'
-    z = 'movingtargetlarge'
+    x = 'vr_ON'
+    y = 'vr_OFF'
+    z = 'looming'
 
     fig = plt.figure()
     ax = fig.add_subplot(projection='3d')
@@ -493,7 +620,7 @@ def compute_clustering():
                    )
     plt.show()
 
-    sns.clustermap(data.T, z_score=1, method='average', metric='correlation', vmin=-2, vmax=4, cmap='afmhot', row_cluster=False, col_cluster=True,
+    sns.clustermap(data.T, method='average', metric='correlation', vmin=-2, vmax=2, cmap='afmhot', row_cluster=False, col_cluster=True,
                    dendrogram_ratio=(.1, .3),
                    cbar_pos=(0.02, .2, .03, .4),
                    figsize=(10, 5)
@@ -608,8 +735,11 @@ def compute_clustering():
         s.append(metrics.silhouette_score(data, labels, metric='euclidean'))
 
 
-def delta_f_over_f(data, p):
-    fbs = np.percentile(data, p, axis=0)
+def delta_f_over_f(data, p, fbs_range):
+    if fbs_range == 'full':
+        fbs = np.percentile(data, p, axis=0)
+    else:
+        fbs = np.percentile(data.iloc[fbs_range[0]:fbs_range[1], :], p, axis=0)
     df = (data - fbs) / fbs
     return df
 
@@ -982,25 +1112,25 @@ def create_cif_double_tau(fr, tau1, tau2, a=1, t_max_factor=10):
     return cif
 
 
-def create_regressors():
-    msg_box('CREATE REGRESSORS', 'STARTING TO COMPUTE STIMULUS REGRESSORS', sep='-')
-    Tk().withdraw()
-    base_dir = askdirectory()
-    meta_data_file_name = [s for s in os.listdir(base_dir) if 'meta_data.csv' in s][0]
-    binaries_file_name = [s for s in os.listdir(base_dir) if 'binaries' in s][0]
-
-    meta_data = pd.read_csv(f'{base_dir}/{meta_data_file_name}')
-    binaries = pd.read_csv(f'{base_dir}/{binaries_file_name}')
-
-    ca_recording_fr = float(meta_data[meta_data['parameter'] == 'rec_img_fr']['value'])
-    ca_impulse_response_function = create_cif_double_tau(fr=ca_recording_fr, tau1=0.1, tau2=1.0)
-
-    # Convolve Binary with CIF to compute the regressors
-    regs = dict()
-    for k in range(binaries.shape[1]):
-        regs[binaries.keys()[k]] = np.convolve(binaries.iloc[:, k], ca_impulse_response_function, 'full')
-    pd.DataFrame(regs).to_csv(f'{base_dir}/stimulus_regressors.csv', index=False)
-    print('REGRESSORS STORED TO HDD')
+# def create_regressors():
+#     msg_box('CREATE REGRESSORS', 'STARTING TO COMPUTE STIMULUS REGRESSORS', sep='-')
+#     Tk().withdraw()
+#     base_dir = askdirectory()
+#     meta_data_file_name = [s for s in os.listdir(base_dir) if 'meta_data.csv' in s][0]
+#     binaries_file_name = [s for s in os.listdir(base_dir) if 'binaries' in s][0]
+#
+#     meta_data = pd.read_csv(f'{base_dir}/{meta_data_file_name}')
+#     binaries = pd.read_csv(f'{base_dir}/{binaries_file_name}')
+#
+#     ca_recording_fr = float(meta_data[meta_data['parameter'] == 'rec_img_fr']['value'])
+#     ca_impulse_response_function = create_cif_double_tau(fr=ca_recording_fr, tau1=0.1, tau2=1.0)
+#
+#     # Convolve Binary with CIF to compute the regressors
+#     regs = dict()
+#     for k in range(binaries.shape[1]):
+#         regs[binaries.keys()[k]] = np.convolve(binaries.iloc[:, k], ca_impulse_response_function, 'full')
+#     pd.DataFrame(regs).to_csv(f'{base_dir}/stimulus_regressors.csv', index=False)
+#     print('REGRESSORS STORED TO HDD')
 
 
 def export_binaries():
@@ -1022,11 +1152,31 @@ def export_binaries():
     all_stimuli_binary_trace['Time'] = ca_time_axis
     all_stimuli_binary_trace['Volt'] = binaries_df.sum(axis=1)
 
+    # Convolve the binary for the complete stimulus trace (for plotting)
+    cif = create_cif_double_tau(fr=ca_recording_fr, tau1=0.01, tau2=7)
+    cif = cif / np.max(cif)
+    binary = all_stimuli_binary_trace['Volt'].to_numpy()
+    reg = np.convolve(binary, cif, 'full')
+    conv_pad = (len(reg) - len(binary))
+    reg_same = reg[:-conv_pad]
+    reg_same_df = pd.DataFrame()
+    reg_same_df['Time'] = ca_time_axis
+    reg_same_df['Volt'] = reg_same
+
+    reg_z = (reg_same - np.min(reg_same)) / np.max(reg_same)
+    plt.plot(binary, 'b')
+    plt.plot(reg_z, 'r')
+    plt.plot(cif, 'g')
+    plt.show()
+
+    embed()
+    exit()
     # Store to HDD
-    binaries_df.to_csv(f'{base_dir}/stimulus_binaries.csv', index=False)
-    stimulus_times.to_csv(f'{base_dir}/stimulus_times.csv', index=False)
+    # binaries_df.to_csv(f'{base_dir}/stimulus_binaries.csv', index=False)
+    # stimulus_times.to_csv(f'{base_dir}/stimulus_times.csv', index=False)
     all_stimuli_binary_trace.to_csv(f'{base_dir}/stimulus_trace.csv', index=False)
-    print('Stimulus Binaries and Stimulus Times (in Ca Recording Frame Rate) stored to HDD')
+    reg_same_df.to_csv(f'{base_dir}/stimulus_reg_trace.csv', index=False)
+    print('Stimulus Binary, Regressor and Stimulus Times (in Ca Recording Frame Rate) stored to HDD')
 
 
 def reg_analysis_cut_out_responses():
@@ -1063,7 +1213,9 @@ def reg_analysis_cut_out_responses():
 
     # Convert raw values to delta f over f
     fbs_percentile = 5
-    ca_rec = delta_f_over_f(ca_rec_raw, fbs_percentile)
+    # ca_rec = delta_f_over_f(ca_rec_raw, fbs_percentile, fbs_range='full')
+    fbs_range_secs = [int(5 * ca_recording_fr), int(40 * ca_recording_fr)]
+    ca_rec = delta_f_over_f(ca_rec_raw, 50, fbs_range=fbs_range_secs)
 
     # Convert all parameters from secs to samples
     pad_before_samples = int(ca_recording_fr * pad_before)
@@ -1167,6 +1319,241 @@ def reg_analysis_cut_out_responses():
         result_list,
         columns=['roi', 'stimulus_id', 'stimulus_type', 'trial', 'info', 'score', 'r_squared', 'slope', 'lag'])
     results.to_csv(f'{base_dir}/linear_model_stimulus_scoring.csv', index=False)
+    print('Linear Model Scoring Results Stored to HDD!')
+
+
+def reg_analysis_cut_out_ventral_root():
+    """ Regressor-Analysis between cut out responses (ca imaging of rois) and stimulus regressors (binaries)
+
+    Following files will be stored to HDD in the same directory as the input data:
+    linear_model_stimulus_scoring.csv
+
+    """
+    # ToDo: - More information into doc string
+
+    msg_box('REGRESSOR ANALYSIS', 'STARTING TO CUT OUT RESPONSES AND COMPUTE REGRESSORS AND LINEAR MODEL SCORING', sep='-')
+
+    plot_results = False
+    # padding in secs
+    pad_before = 2
+    pad_after = 3
+    ca_dynamics_rise = 0
+    shifting_limit = 2
+
+    Tk().withdraw()
+    base_dir = askdirectory()
+    meta_data_file_name = [s for s in os.listdir(base_dir) if 'meta_data.csv' in s][0]
+    vr_activity_file_name = [s for s in os.listdir(base_dir) if 'ventral_root_activity' in s][0]
+    ca_rec_file_name = [s for s in os.listdir(base_dir) if 'raw_values' in s][0]
+    protocol_file_name = [s for s in os.listdir(base_dir) if 'stimulus_protocol' in s][0]
+    stimulus_protocol = pd.read_csv(f'{base_dir}/{protocol_file_name}')
+
+    meta_data = pd.read_csv(f'{base_dir}/{meta_data_file_name}')
+    vr_activity = pd.read_csv(f'{base_dir}/{vr_activity_file_name}')
+
+    ca_rec_raw = pd.read_csv(f'{base_dir}/{ca_rec_file_name}', index_col=0)
+    ca_recording_fr = float(meta_data[meta_data['parameter'] == 'rec_img_fr']['value'])
+    ca_duration = float(meta_data[meta_data['parameter'] == 'rec_img_duration']['value'])
+
+    # Convert raw values to delta f over f
+    # fbs_percentile = 5
+    fbs_range_secs = [int(5 * ca_recording_fr), int(40 * ca_recording_fr)]
+    ca_rec = delta_f_over_f(ca_rec_raw, 50, fbs_range=fbs_range_secs)
+    # ca_rec2 = delta_f_over_f(ca_rec_raw, fbs_percentile, fbs_range='full')
+
+    # roi = 'Mean12'
+    # plt.plot(ca_rec[roi], label='range')
+    # plt.plot(ca_rec2[roi], label='full')
+    # plt.plot(fbs_range_secs, [1, 1], 'r:')
+    # plt.legend()
+    # plt.show()
+
+    # Convert all parameters from secs to samples
+    pad_before_samples = int(ca_recording_fr * pad_before)
+    pad_after_samples = int(ca_recording_fr * pad_after)
+    ca_dynamics_rise_samples = int(ca_recording_fr * ca_dynamics_rise)
+    shifting_limit_samples = int(ca_recording_fr * shifting_limit)
+
+    # ca_fr = float(meta_data[meta_data['parameter'] == 'rec_img_fr']['value'])
+    # ca_duration = float(meta_data[meta_data['parameter'] == 'rec_img_duration']['value'])
+    _, protocol = create_binary(stimulus_protocol, ca_recording_fr, ca_duration)
+
+    # random control
+    idx_rand = np.random.randint(1, ca_rec.shape[0]-10, size=vr_activity.shape[0])
+    # idx_rand = np.random.randint(1, ca_rec.shape[0]-10, size=100)
+    idx_rand = np.sort(idx_rand)
+    vr_activity_rand = pd.DataFrame()
+    vr_activity_rand['start_idx'] = idx_rand
+    vr_activity_rand['end_idx'] = idx_rand + 1
+
+    # Get unique stimulus types
+    # Loop through all ROIs (cols of the ca recording data frame)
+    all_results = []
+    cc = 0
+    for vr_act in [vr_activity, vr_activity_rand]:
+        cc += 1
+        result_list = []
+        for roi_name in ca_rec:
+            cc_on = 0
+            cc_off = 0
+            for k in range(vr_act.shape[0]):
+                vr_start = int(vr_act.iloc[k]['start_idx'])
+                start = int(vr_start - pad_before_samples)
+                if start < 0:
+                    start = 0
+                    pad_before_samples = vr_start - start
+                vr_end = int(vr_act.iloc[k]['end_idx'])
+                end = int(vr_end + pad_after_samples)
+                if end > ca_rec.shape[0]:
+                    end = ca_rec.shape[0]
+                    pad_after_samples = end-vr_end
+                ca_rec_cut_out = ca_rec.iloc[start:end].reset_index(drop=True)
+                ca_trace = ca_rec_cut_out[roi_name].to_numpy()
+
+                # Create the Regressor on the fly
+                binary = np.zeros_like(ca_trace)
+                binary[pad_before_samples:len(binary)-pad_after_samples] = 1
+
+                cif = create_cif_double_tau(ca_recording_fr, tau1=0.5, tau2=2.0)
+                reg = np.convolve(binary, cif, 'full')
+                # reg = reg / np.max(reg)
+
+                cross_corr_func = sig.correlate(ca_trace, reg, mode='full')
+                lags = sig.correlation_lags(len(ca_trace), len(reg))
+                # Get the lag time for the maximum cross corr value (in samples)
+                cross_corr_optimal_lag = lags[np.where(cross_corr_func == np.max(cross_corr_func))[0][0]]
+
+                # the response should not be before the stimulus and not too long after stimulus onset:
+                if cross_corr_optimal_lag < 0:
+                    cross_corr_optimal_lag = 0
+                if cross_corr_optimal_lag > shifting_limit_samples:
+                    cross_corr_optimal_lag = shifting_limit_samples
+
+                # Consider Ca Rise Time
+                cross_corr_optimal_lag = (cross_corr_optimal_lag - ca_dynamics_rise_samples)
+
+                # Create regressor with optimal lag
+                binary_optimal = np.zeros_like(ca_trace)
+                binary_optimal[pad_before_samples + cross_corr_optimal_lag:len(binary_optimal) - pad_after_samples + cross_corr_optimal_lag] = 1
+                # binary_optimal[vr_start+cross_corr_optimal_lag:vr_end+1+cross_corr_optimal_lag] = 1
+                reg_optimal = np.convolve(binary_optimal, cif, 'full')
+                # reg_optimal = reg_optimal / np.max(reg_optimal)
+                conv_pad = (len(reg_optimal) - len(ca_trace))
+                reg_same = reg_optimal[:-conv_pad]
+
+                # Use Linear Regression Model to compute a Score
+                sc, rr, aa = apply_linear_model(xx=reg_same, yy=ca_trace)
+
+                # if sc < 0:
+                #     sc = 0
+                # Prepare data frame entry
+                cross_corr_optimal_lag_secs = cross_corr_optimal_lag / ca_recording_fr
+                # Check if motor event is together with visual stimulation or not
+                a0 = protocol['start_idx'] <= vr_start
+                a1 = protocol['end_idx'] >= vr_start
+                if cc == 2:
+                    stim_name = 'random'
+                else:
+                    stim_name = 'vr'
+                if any(a0 * a1):
+                    cc_on += 1
+                    # This means it is during a visual stimulation
+                    entry = [roi_name, stim_name, stim_name, cc_on, 'ON', sc, rr, aa, cross_corr_optimal_lag_secs]
+                else:
+                    cc_off += 1
+                    entry = [roi_name, stim_name, stim_name, cc_off, 'OFF', sc, rr, aa, cross_corr_optimal_lag_secs]
+
+                result_list.append(entry)
+
+                # Test Plot
+                # msg = f"{roi_name}: score: {sc:.3f}, lag: {cross_corr_optimal_lag / ca_recording_fr:.3f} s"
+                # print(msg)
+                # print(f"R: {rr}, Slope: {aa}")
+                # plt.figure()
+                # plt.title(msg)
+                # plt.plot(binary, 'b--')
+                # plt.plot(binary_optimal, 'r--')
+                # plt.plot(reg, 'b')
+                # plt.plot(reg_optimal, 'r')
+                # plt.plot(ca_trace, 'k')
+                # plt.plot(reg_same, 'y--')
+                # # plt.plot(cross_corr_func/np.max(cross_corr_func), 'g')
+                # plt.show()
+        # Put all results into one data frame (long format)
+        results = pd.DataFrame(
+            result_list,
+            columns=['roi','stimulus_id', 'stimulus_type', 'trial', 'info', 'score', 'r_squared', 'slope', 'lag'])
+        all_results.append(results)
+
+    if plot_results:
+        # bins_nr = 'sqrt'
+        data_95 = np.percentile(all_results[0]["score"], 95)
+        random_95 = np.percentile(all_results[1]["score"], 95)
+
+        bins_nr = 60
+        val_names = ['score', 'r_squared', 'slope']
+        h_type = ['bar', 'step', 'step']
+        fig, axs = plt.subplots(1, 2)
+        axs[0].set_title(f'Data, 95 percentile = {data_95:.3f}')
+        axs[1].set_title(f'Random, 95 percentile = {random_95:.3f}')
+        for k, vn in enumerate(val_names):
+            axs[0].hist(all_results[0][vn], bins=bins_nr, histtype=h_type[k], label=vn)
+            axs[1].hist(all_results[1][vn], bins=bins_nr, histtype=h_type[k], label=vn)
+
+        axs[0].set_xlim(-0.5, 1)
+        axs[1].set_xlim(-0.5, 1)
+        axs[0].plot([random_95, random_95], [0, 800], 'r--', lw=2)
+        axs[1].plot([random_95, random_95], [0, 800], 'r--', lw=2)
+
+        axs[0].set_ylim(0, 800)
+        axs[1].set_ylim(0, 800)
+        plt.legend()
+
+        #
+        bins_nr = 100
+        data_diff = all_results[0]['score'].diff()
+        random_diff = all_results[1]['score'].diff()
+        t = np.arange(0, 1, 1 / len(data_diff))
+        tau = 0.03
+        e_fit = np.exp(-t/tau) * 500
+
+        fig, axs = plt.subplots()
+        axs.hist(abs(data_diff), bins=bins_nr, label='data')
+        axs.hist(abs(random_diff), bins=bins_nr, label='random')
+        axs.plot(t, e_fit, 'r')
+        plt.legend()
+        plt.show()
+
+        # ON vs OFF
+        on_data = all_results[0][all_results[0]['info'] == 'ON']
+        off_data = all_results[0][all_results[0]['info'] == 'OFF']
+        on_data_50 = np.percentile(on_data['score'], 50)
+        off_data_50 = np.percentile(off_data['score'], 50)
+
+        fig, axs = plt.subplots(1, 2)
+        axs[0].set_title(f'ON, 95 percentile = {on_data_50:.3f}')
+        axs[1].set_title(f'OFF, 95 percentile = {off_data_50:.3f}')
+        for k, vn in enumerate(val_names):
+            axs[0].hist(on_data[vn], bins=bins_nr, histtype=h_type[k], label=vn)
+            axs[1].hist(off_data[vn], bins=bins_nr, histtype=h_type[k], label=vn)
+
+        axs[0].set_xlim(-0.5, 1)
+        axs[1].set_xlim(-0.5, 1)
+        axs[0].plot([on_data_50, on_data_50], [0, 100], 'g--', lw=2)
+        axs[1].plot([off_data_50, off_data_50], [0, 100], 'g--', lw=2)
+        axs[0].plot([random_95, random_95], [0, 100], 'r--', lw=2)
+        axs[1].plot([random_95, random_95], [0, 100], 'r--', lw=2)
+
+        axs[0].set_ylim(0, 300)
+        axs[1].set_ylim(0, 300)
+        plt.legend()
+        plt.show()
+
+    all_results[0].to_csv(f'{base_dir}/linear_model_ventral_root_scoring.csv', index=False)
+    all_results[1].to_csv(f'{base_dir}/linear_model_random_vr__scoring.csv', index=False)
+
+    # results.to_csv(f'{base_dir}/linear_model_ventral_root_scoring.csv', index=False)
+
     print('Linear Model Scoring Results Stored to HDD!')
 
 
@@ -1347,6 +1734,24 @@ def average_over_trials(data):
                 new_entry_off = [roi, f'{s_name}_OFF', s_name, 'OFF', off_mean, off_r, off_slope, off_lag]
                 new_data.append(new_entry_on)
                 new_data.append(new_entry_off)
+            if s_name == 'vr':
+                idx = (data['stimulus_type'] == s_name) * (data['roi'] == roi)
+                dummy = data[idx]
+                # Get ON and OFF VR Weighted Mean Score and Lag (weighted by r square values)
+                on_mean = np.average(dummy[dummy['info'] == 'ON']['score'], weights=dummy[dummy['info'] == 'ON']['r_squared'])
+                on_lag = np.average(dummy[dummy['info'] == 'ON']['lag'], weights=dummy[dummy['info'] == 'ON']['r_squared'])
+                on_r = dummy[dummy['info'] == 'ON']['r_squared'].mean()
+                on_slope = dummy[dummy['info'] == 'ON']['slope'].mean()
+
+                off_mean = np.average(dummy[dummy['info'] == 'OFF']['score'], weights=dummy[dummy['info'] == 'OFF']['r_squared'])
+                off_lag = np.average(dummy[dummy['info'] == 'OFF']['lag'], weights=dummy[dummy['info'] == 'OFF']['r_squared'])
+                off_r = dummy[dummy['info'] == 'OFF']['r_squared'].mean()
+                off_slope = dummy[dummy['info'] == 'OFF']['slope'].mean()
+
+                new_entry_on = [roi, f'{s_name}_ON', s_name, 'ON', on_mean, on_r, on_slope, on_lag]
+                new_entry_off = [roi, f'{s_name}_OFF', s_name, 'OFF', off_mean, off_r, off_slope, off_lag]
+                new_data.append(new_entry_on)
+                new_data.append(new_entry_off)
     mean_scores_df = pd.DataFrame(new_data, columns=['roi', 'stimulus_id', 'stimulus_type', 'info', 'score', 'r_squared', 'slope', 'lag'])
     # Now add the other original entries that do not need averaging
     looms = data[data['stimulus_type'] == 'looming']
@@ -1354,19 +1759,6 @@ def average_over_trials(data):
     gratings = data[data['stimulus_type'] == 'grating']
     results = pd.concat([mean_scores_df, looms, looms_rev, gratings]).drop(columns='trial')
     results = results.sort_values(by='roi').reset_index(drop=True)
-    # roi_names = data['roi'].unique()
-    # stimulus_types = data['stimulus_type'].unique()
-    # new_data = []
-    # embed()
-    # exit()
-    # for roi in roi_names:
-    #     for s_name in stimulus_types:
-    #         idx = (data['stimulus_type'] == s_name) * (data['roi'] == roi)
-    #         m_score = data[idx]['score'].mean()
-    #         new_entry = [roi, s_name, m_score]
-    #         new_data.append(new_entry)
-    # mean_scores_df = pd.DataFrame(new_data, columns=['roi', 'stimulus_type', 'score'])
-
     return results
 
 
@@ -1600,14 +1992,11 @@ def print_options():
     print('0: Export Meta data')
     print('1: Convert Ventral Root Recording')
     print('2: Export Stimulus Protocol')
-    print('3: Export Stimulus Binaries (optional)' )
-    print('4: Export Regressors (optional)')
-    print('5: Regressor-based (LM-) Scoring')
-    print('6: Ventral Root Activity Detection')
+    print('3: Export Stimulus Binary and Regressor (optional)')
+    print('4: Regressor-based (LM-) Scoring')
+    print('5: Ventral Root Activity Detection')
+    print('6: LM Scoring for Ventral Root')
     print('7: Run Clustering')
-    print('8: LM Scoring for Ventral Root')
-    print('9: Run Silhouette Analysis')
-    print('10: Run Affinity Propagation Clustering')
     print('')
     print('To see options type: >> options')
     print('To exit type: >> exit')
@@ -1628,19 +2017,13 @@ if __name__ == '__main__':
         elif usr == '3':
             export_binaries()
         elif usr == '4':
-            create_regressors()
-        elif usr == '5':
             reg_analysis_cut_out_responses()
-        elif usr == '6':
+        elif usr == '5':
             ventral_root_detection()
+        elif usr == '6':
+            reg_analysis_cut_out_ventral_root()
         elif usr == '7':
             compute_clustering()
-        elif usr == '8':
-            reg_analysis_ventral_root()
-        elif usr == '9':
-            sil()
-        elif usr =='10':
-            affinity_propagation_clustering()
         elif usr == 'options':
             print_options()
         elif usr == 'exit':
