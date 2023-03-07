@@ -25,6 +25,12 @@ import sklearn.cluster as cluster
 import time
 
 
+def rect_to_onset_impulse(data):
+    binary = np.diff(data, append=0)
+    binary[binary<0] = 0
+    return binary
+
+
 def plot_clusters(data, algorithm, args, kwds):
     plot_kwds = {'alpha': 0.25, 's': 80, 'linewidths': 0}
     start_time = time.time()
@@ -59,61 +65,62 @@ def plot_clusters(data, algorithm, args, kwds):
     return labels
 
 
-def clustering_algorithms_test():
-    msg_box('CLUSTERING', 'STARTING CLUSTERING', sep='-')
-    Tk().withdraw()
-    base_dir = askdirectory()
-    file_list = os.listdir(base_dir)
+# def clustering_algorithms_test():
+#     msg_box('CLUSTERING', 'STARTING CLUSTERING', sep='-')
+#     Tk().withdraw()
+#     base_dir = askdirectory()
+#     file_list = os.listdir(base_dir)
+#
+#     lm_scoring_file_name = [s for s in os.listdir(base_dir) if 'linear_model_stimulus_scoring' in s][0]
+#     lm_scoring_long = pd.read_csv(f'{base_dir}/{lm_scoring_file_name}')
+#
+#     # Convert Long to wide format (needed for clustering)
+#     # lm_scoring = lm_scoring_long.pivot_table(index='roi', columns='stimulus_id', values='score')
+#     # stimulus_ids = list(lm_scoring.keys())
+#
+#     # Average over trials (if stimulus type has multiple trials)
+#     lm_scoring_averaged = average_over_trials(data=lm_scoring_long)
+#
+#     # Sort by R squared values
+#     r_th = 0.1
+#     lm_scoring_selected = sort_by_r(lm_scoring_averaged, r_th=r_th)
+#
+#     lm_scoring = lm_scoring_selected.pivot_table(index='roi', columns='stimulus_id', values='score')
+#
+#     # Set minus values to zero
+#     lm_scoring[lm_scoring < 0] = 0
+#     # d = mean_lm_scoring.copy()
+#     stimulus_types = list(lm_scoring.keys())
+#     data = lm_scoring.copy()
+#     embed()
+#     exit()
+#     # K-Means
+#     plot_clusters(data, cluster.KMeans, (), {'n_clusters': 30})
+#
+#     # Affinity Propagation
+#     plot_clusters(data, cluster.AffinityPropagation, (), {'preference':-5.0, 'damping':0.95, 'random_state': 0})
+#
+#     # Mean Shift
+#     plot_clusters(data, cluster.MeanShift, (), {'cluster_all': False, 'bandwidth': 0.175})
+#
+#     # Spectral Clustering
+#     plot_clusters(data, cluster.SpectralClustering, (), {'n_clusters': 6})
+#
+#     # Agglomerative Clustering
+#     plot_clusters(data, cluster.AgglomerativeClustering, (), {'n_clusters': 20, 'linkage': 'ward'})
+#
+#     # DBSCAN
+#     l = plot_clusters(data, cluster.DBSCAN, (), {'eps': 0.5})
+#
+#     # HDBSCAN
+#     import hdbscan
+#     plot_clusters(data, hdbscan.HDBSCAN, (), {'min_cluster_size': 3})
+#
+#     clusterer = hdbscan.HDBSCAN(min_cluster_size=3, gen_min_span_tree=True).fit(data)
+#     clusterer.condensed_tree_.plot(select_clusters=True, selection_palette=sns.color_palette('deep', 8))
+#     # clusterer.single_linkage_tree_.plot()
+#     plt.show()
 
-    lm_scoring_file_name = [s for s in os.listdir(base_dir) if 'linear_model_stimulus_scoring' in s][0]
-    lm_scoring_long = pd.read_csv(f'{base_dir}/{lm_scoring_file_name}')
-
-    # Convert Long to wide format (needed for clustering)
-    # lm_scoring = lm_scoring_long.pivot_table(index='roi', columns='stimulus_id', values='score')
-    # stimulus_ids = list(lm_scoring.keys())
-
-    # Average over trials (if stimulus type has multiple trials)
-    lm_scoring_averaged = average_over_trials(data=lm_scoring_long)
-
-    # Sort by R squared values
-    r_th = 0.1
-    lm_scoring_selected = sort_by_r(lm_scoring_averaged, r_th=r_th)
-
-    lm_scoring = lm_scoring_selected.pivot_table(index='roi', columns='stimulus_id', values='score')
-
-    # Set minus values to zero
-    lm_scoring[lm_scoring < 0] = 0
-    # d = mean_lm_scoring.copy()
-    stimulus_types = list(lm_scoring.keys())
-    data = lm_scoring.copy()
-    embed()
-    exit()
-    # K-Means
-    plot_clusters(data, cluster.KMeans, (), {'n_clusters': 30})
-
-    # Affinity Propagation
-    plot_clusters(data, cluster.AffinityPropagation, (), {'preference':-5.0, 'damping':0.95, 'random_state': 0})
-
-    # Mean Shift
-    plot_clusters(data, cluster.MeanShift, (), {'cluster_all': False, 'bandwidth': 0.175})
-
-    # Spectral Clustering
-    plot_clusters(data, cluster.SpectralClustering, (), {'n_clusters': 6})
-
-    # Agglomerative Clustering
-    plot_clusters(data, cluster.AgglomerativeClustering, (), {'n_clusters': 20, 'linkage': 'ward'})
-
-    # DBSCAN
-    l = plot_clusters(data, cluster.DBSCAN, (), {'eps': 0.5})
-
-    # HDBSCAN
-    import hdbscan
-    plot_clusters(data, hdbscan.HDBSCAN, (), {'min_cluster_size': 3})
-
-    clusterer = hdbscan.HDBSCAN(min_cluster_size=3, gen_min_span_tree=True).fit(data)
-    clusterer.condensed_tree_.plot(select_clusters=True, selection_palette=sns.color_palette('deep', 8))
-    # clusterer.single_linkage_tree_.plot()
-    plt.show()
 
 def sort_out_clusters_by_members(data, labels, member_th, n_clusters):
     # member_th: minimal number of members of a cluster to keep it
@@ -132,33 +139,23 @@ def sort_out_clusters_by_members(data, labels, member_th, n_clusters):
 
 
 def affinity_propagation_clustering(lm_scoring):
-    # msg_box('CLUSTERING', 'STARTING CLUSTERING', sep='-')
-    # Tk().withdraw()
-    # base_dir = askdirectory()
-    # file_list = os.listdir(base_dir)
-    #
-    # lm_scoring_file_name = [s for s in os.listdir(base_dir) if 'linear_model_stimulus_scoring' in s][0]
-    # lm_scoring_long = pd.read_csv(f'{base_dir}/{lm_scoring_file_name}')
-    # # Average over trials (if stimulus type has multiple trials)
-    # lm_scoring_averaged = average_over_trials(data=lm_scoring_long)
-    # # Sort by R squared values
-    # r_th = 0.3
-    # lm_scoring_selected = sort_by_r(lm_scoring_averaged, r_th=r_th)
-    # # Convert from long to wide format
-    # lm_scoring = lm_scoring_selected.pivot_table(index='roi', columns='stimulus_id', values='score')
-    # # Set minus values to zero
-    # lm_scoring[lm_scoring < 0] = 0
-    # stimulus_types = list(lm_scoring.keys())
-
     # Affinity Propagation Clustering
-    # d = lm_scoring[['grating_0', 'grating_180', 'grating_90', 'grating_270', 'movingtargetsmall', 'movingtargetlarge']]
-    data = lm_scoring.to_numpy()
-    clustering = AffinityPropagation(random_state=5).fit(data)
-    cluster_centers_indices = clustering.cluster_centers_indices_
+    # data = lm_scoring.to_numpy()
+    data = lm_scoring.copy()
+
+    # clustering = AffinityPropagation(preference=-1, max_iter=250, convergence_iter=20, random_state=5).fit(data)
+    # clustering = AffinityPropagation(max_iter=400, convergence_iter=30, random_state=5).fit(data)
+    clustering = AffinityPropagation(random_state=0).fit(data)
+
+    exemplars = clustering.cluster_centers_indices_
     labels = clustering.labels_
-    n_clusters_ = len(cluster_centers_indices)
+    n_clusters_ = len(exemplars)
+    silhouette_scores_samples = metrics.silhouette_samples(data, labels, metric=clustering.affinity)
+    average_silhouette_score = np.mean(silhouette_scores_samples)
+    std_silhouette_score = np.std(silhouette_scores_samples)
+
     print(f"Estimated number of clusters: {n_clusters_}")
-    print(f"Silhouette Coefficient: {metrics.silhouette_score(data, labels, metric='sqeuclidean'):.3f}")
+    print(f"Average Silhouette Coefficient: {average_silhouette_score:.3f}+-{std_silhouette_score:.3f}")
 
     member_th = 5
     keep_clusters = []
@@ -172,7 +169,15 @@ def affinity_propagation_clustering(lm_scoring):
     print(f'Keep {len(keep_clusters)} / {n_clusters_} clusters')
     print(f'Keep {len(keep_rois)} / {data.shape[0]} ROIs')
 
+    # aff_matrix = clustering.affinity_matrix_
     aff_prop_data_selected = lm_scoring.iloc[keep_rois].sort_values(by='roi')
+
+    # Sort out exemplars for later hierarchical clustering
+    selected_exemplars = []
+    for ex_idx in exemplars:
+        if ex_idx in keep_rois:
+            selected_exemplars.append(data.iloc[ex_idx, :])
+    selected_exemplars = pd.DataFrame(selected_exemplars)
 
     # print("Homogeneity: %0.3f" % metrics.homogeneity_score(labels_true, labels))
     # print("Completeness: %0.3f" % metrics.completeness_score(labels_true, labels))
@@ -182,28 +187,7 @@ def affinity_propagation_clustering(lm_scoring):
     #     "Adjusted Mutual Information: %0.3f"
     #     % metrics.adjusted_mutual_info_score(labels_true, labels)
     # )
-
-    # plt.figure()
-    # colors = plt.cycler("color", plt.cm.viridis(np.linspace(0, 1, 4)))
-    # feature1 = 2
-    # feature2 = 3
-    # for k, col in zip(range(n_clusters_), colors):
-    #     class_members = labels == k
-    #     cluster_center = data[cluster_centers_indices[k]]
-    #     plt.scatter(
-    #         data[class_members, feature1], data[class_members, feature2], color=col["color"], marker="."
-    #     )
-    #     plt.scatter(
-    #         cluster_center[feature1], cluster_center[feature2], s=14, color=col["color"], marker="o"
-    #     )
-    #     for x in data[class_members]:
-    #         plt.plot(
-    #             [cluster_center[feature1], x[feature1]], [cluster_center[feature2], x[feature2]], color=col["color"]
-    #         )
-    #
-    # plt.title("Estimated number of clusters: %d" % n_clusters_)
-    # plt.show()
-    return aff_prop_data_selected
+    return aff_prop_data_selected, selected_exemplars
 
 
 def sort_by_r(data, r_th):
@@ -222,7 +206,8 @@ def sil():
 
     msg_box('CLUSTERING', 'STARTING CLUSTERING', sep='-')
     Tk().withdraw()
-    base_dir = askdirectory()
+    base_dir1 = askdirectory()
+    base_dir = f'{base_dir1}/analysis'
     file_list = os.listdir(base_dir)
 
     lm_scoring_file_name = [s for s in os.listdir(base_dir) if 'linear_model_stimulus_scoring' in s][0]
@@ -246,8 +231,6 @@ def sil():
     # d = mean_lm_scoring.copy()
     stimulus_types = list(lm_scoring.keys())
 
-    embed()
-    exit()
     # Generating the sample data from make_blobs
     # This particular setting has one distinct cluster and 3 clusters placed close
     # together.
@@ -275,6 +258,9 @@ def sil():
         clusterer = AgglomerativeClustering(n_clusters=n_clusters)
         cluster_labels = clusterer.fit_predict(X)
         # n_clusters = np.max(cluster_labels)
+
+        # clustering = AffinityPropagation(random_state=5).fit(X)
+        # cluster_labels = clustering.labels_
 
         # The 1st subplot is the silhouette plot
         # The silhouette coefficient can range from -1, 1 but in this example all
@@ -435,14 +421,18 @@ def compute_clustering():
     msg_box('CLUSTERING', 'STARTING CLUSTERING', sep='-')
     Tk().withdraw()
     base_dir = askdirectory()
-    file_list = os.listdir(base_dir)
+    analysis_dir = f'{base_dir}/analysis'
+    # file_list = os.listdir(base_dir)
 
-    lm_scoring_file_name = [s for s in os.listdir(base_dir) if 'linear_model_stimulus_scoring' in s][0]
-    lm_scoring_vr_file_name = [s for s in os.listdir(base_dir) if 'linear_model_ventral_root_scoring' in s][0]
+    lm_scoring_file_name = [s for s in os.listdir(analysis_dir) if 'linear_model_stimulus_scoring' in s][0]
+    lm_scoring_vr_file_name = [s for s in os.listdir(analysis_dir) if 'linear_model_ventral_root_scoring' in s]
 
-    lm_scoring_stimulus_long = pd.read_csv(f'{base_dir}/{lm_scoring_file_name}')
-    lm_scoring_vr_long = pd.read_csv(f'{base_dir}/{lm_scoring_vr_file_name}')
-    lm_scoring_long = pd.concat([lm_scoring_stimulus_long, lm_scoring_vr_long]).sort_values(by='roi').reset_index(drop=True)
+    lm_scoring_stimulus_long = pd.read_csv(f'{analysis_dir}/{lm_scoring_file_name}')
+    if lm_scoring_vr_file_name:
+        lm_scoring_vr_long = pd.read_csv(f'{analysis_dir}/{lm_scoring_vr_file_name[0]}')
+        lm_scoring_long = pd.concat([lm_scoring_stimulus_long, lm_scoring_vr_long]).sort_values(by='roi').reset_index(drop=True)
+    else:
+        lm_scoring_long = lm_scoring_stimulus_long
 
     # Convert Long to wide format (needed for clustering)
     # lm_scoring = lm_scoring_long.pivot_table(index='roi', columns='stimulus_id', values='score')
@@ -452,7 +442,7 @@ def compute_clustering():
     lm_scoring_averaged = average_over_trials(data=lm_scoring_long)
 
     # Sort by R squared values
-    r_th = 0.1
+    r_th = 0.2
     lm_scoring_selected = sort_by_r(lm_scoring_averaged, r_th=r_th)
 
     lm_scoring = lm_scoring_selected.pivot_table(index='roi', columns='stimulus_id', values='score')
@@ -463,8 +453,9 @@ def compute_clustering():
     lm_scoring[lm_scoring < 0] = 0
     lm_scoring_slope[lm_scoring_slope < 0] = 0
 
-    # d = mean_lm_scoring.copy()
     stimulus_types = list(lm_scoring.keys())
+    aff_data, exemplars = affinity_propagation_clustering(lm_scoring)
+
     embed()
     exit()
 
@@ -485,9 +476,9 @@ def compute_clustering():
     # +++++++++++++++++++++++++++++++++++++++
     # COMPUTE AFFINITY PROPAGATION CLUSTERING
 
-    aff_data = affinity_propagation_clustering(lm_scoring)
-    aff_data_r = affinity_propagation_clustering(lm_scoring_r_squared)
-    aff_data_slope = affinity_propagation_clustering(lm_scoring_slope)
+    aff_data, exemplars = affinity_propagation_clustering(lm_scoring)
+    aff_data_r, exemplars = affinity_propagation_clustering(lm_scoring_r_squared)
+    aff_data_slope, exemplars = affinity_propagation_clustering(lm_scoring_slope)
 
     # standardize (normalize) the features
     # data = whiten(mean_lm_scoring)
@@ -500,10 +491,11 @@ def compute_clustering():
 
     data = aff_data_slope
     data = lm_scoring_slope
-    embed()
-    exit()
 
-    sns.clustermap(data.T, method='average', metric='correlation', vmin=0, vmax=1, cmap='afmhot', row_cluster=False, col_cluster=True,
+    # z scores
+    # data = (data - np.mean(data, axis=0)) / np.std(data, axis=0)
+
+    sns.clustermap(data.T, z_score=0, method='average', metric='correlation', vmin=-2, vmax=4, cmap='afmhot', row_cluster=False, col_cluster=True,
                    dendrogram_ratio=(.1, .3),
                    cbar_pos=(0.02, .2, .03, .4),
                    figsize=(10, 5)
@@ -545,7 +537,7 @@ def compute_clustering():
     # default color threshold: 0.7 * np.max(matrix[:, 2])
     plt.figure()
     dn = dendrogram(matrix, truncate_mode="level", p=0, distance_sort=True, show_leaf_counts=True,
-                    color_threshold=0.7 * np.max(matrix[:, 2]))
+                    color_threshold=0.5 * np.max(matrix[:, 2]))
     plt.title('Dendrogram2')
 
     plt.show()
@@ -553,28 +545,19 @@ def compute_clustering():
     # --------------------------------------
     # Assign cluster labels (Stimulus IDs)
     labels = fcluster(
-        matrix, t=3,
+        matrix, t=7,
         criterion='maxclust'
     )
 
     # Create DataFrame for Scatter Plot
-    # df = pd.DataFrame(data, columns=stimulus_ids)
-    # df['labels'] = labels
     data_plotting = data.copy()
+    # data_plotting = (data_plotting - np.mean(data_plotting, axis=0)) / np.std(data_plotting, axis=0)
     data_plotting['labels'] = labels
     # Plot Clusters
 
-    # sns.scatterplot(
-    #     x='looming',
-    #     y='grating_180',
-    #     hue='labels',
-    #     data=data_plotting
-    # )
-    # plt.show()
-
-    x = 'vr_ON'
-    y = 'vr_OFF'
-    z = 'looming'
+    x = 'movingtargetlarge'
+    y = 'flash_ON'
+    z = 'vr_ON'
 
     fig = plt.figure()
     ax = fig.add_subplot(projection='3d')
@@ -590,7 +573,7 @@ def compute_clustering():
     y = 'grating_180'
     ax.scatter(data_plotting[x], data_plotting[y], c=labels, cmap='viridis')
     # ax.scatter(data_plotting[x], data_plotting[y])
-    # ax.plot([0, 0], [0, 1], 'k')
+    # ax.plot([0, 0], [0, 1], 'k')q
     # ax.plot([0, 1], [0, 0], 'k')
     ax.set_xlim(-0.2, 1)
     ax.set_ylim(-0.2, 1)
@@ -620,7 +603,14 @@ def compute_clustering():
                    )
     plt.show()
 
-    sns.clustermap(data.T, method='average', metric='correlation', vmin=-2, vmax=2, cmap='afmhot', row_cluster=False, col_cluster=True,
+    sns.clustermap(data.T, z_score=1, method='average', metric='correlation', vmin=-2, vmax=2, cmap='afmhot', row_cluster=False, col_cluster=True,
+                   dendrogram_ratio=(.1, .3),
+                   cbar_pos=(0.02, .2, .03, .4),
+                   figsize=(10, 5)
+                   )
+    plt.show()
+
+    sns.clustermap(data.T, method='average', metric='correlation', vmin=-0.3, vmax=0.7, cmap='afmhot', row_cluster=False, col_cluster=True,
                    dendrogram_ratio=(.1, .3),
                    cbar_pos=(0.02, .2, .03, .4),
                    figsize=(10, 5)
@@ -645,7 +635,7 @@ def compute_clustering():
     plt.show()
 
     # use the outlier detection
-    sns.clustermap(lm_scoring, robust=True)
+    sns.clustermap(lm_scoring.T, robust=True)
     plt.show()
 
     # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -658,7 +648,7 @@ def compute_clustering():
     # setting distance_threshold=0 ensures we compute the full tree.
     th_range = np.arange(0.1, 3.05, 0.05)
     th = 0
-    n_clusters = np.arange(2, 51, 1)
+    n_clusters = np.arange(2, 21, 1)
     # all_metrics = ["braycurtis", "canberra", "chebyshev", "cityblock", "correlation", "cosine", "dice", "euclidean", "hamming",
     # "jaccard", "jensenshannon", "mahalanobis", "matching", "minkowski", "rogerstanimoto",
     # "russellrao", "seuclidean", "sokalmichener", "sokalsneath", "sqeuclidean", "yule"]
@@ -688,13 +678,13 @@ def compute_clustering():
 
     # +++++++++++++++
     # distance_th = 0.5
-    n_clusters = 26
+    n_clusters = 17
     model = AgglomerativeClustering(affinity='correlation', linkage='average', compute_distances=True, n_clusters=n_clusters)
     clusters = model.fit(data)
     print(f'Clusters: {clusters.n_clusters_}')
 
     # Sort out clusters with only a few members
-    new_data = sort_out_clusters_by_members(data, labels, member_th=20, n_clusters=n_clusters)
+    new_data = sort_out_clusters_by_members(data, labels, member_th=5, n_clusters=n_clusters)
 
     plt.figure()
     plt.title("Hierarchical Clustering Dendrogram")
@@ -832,22 +822,21 @@ def visual_stimulation():
     msg_box('VISUAL STIMULATION', 'STARTING TO GET ALL VISUAL STIMULATION FILES', sep='-')
     Tk().withdraw()
     base_dir = askdirectory()
+    analysis_dir = f'{base_dir}/analysis'
     stimulus_data_dir = f'{base_dir}/stimulation'
+    if not base_dir:
+        return None
 
     # Load Meta Data
-    file_list = os.listdir(base_dir)
-    meta_data_file_name = [s for s in file_list if 'meta_data.csv' in s][0]
-    meta_data = pd.read_csv(f'{base_dir}/{meta_data_file_name}')
-    # time_zero = float(meta_data[meta_data['parameter'] == 'rec_vr_start']['value'].item())
+    file_list = os.listdir(analysis_dir)
+    meta_data_file_name = [s for s in file_list if 'recording_meta_data.csv' in s][0]
+    meta_data = pd.read_csv(f'{analysis_dir}/{meta_data_file_name}')
     time_zero = float(meta_data[meta_data['parameter'] == 'rec_img_start_plus_delay']['value'].item())
-    # rec_duration = float(meta_data[meta_data['parameter'] == 'rec_vr_duration']['value'].item())
 
     file_list = os.listdir(stimulus_data_dir)
-    # vr_files = [s for s in file_list if "ephys" in s]
     stimulus = dict()
     for f_name in file_list:
         stimulus[f_name[6:-4]] = pd.read_csv(f'{stimulus_data_dir}/{f_name}', sep='\t', header=None)
-    stimulus_id = file_list[0][:5]
     idx = list(stimulus.keys())
     stimulus_df = pd.DataFrame()
     for stim_name in idx:
@@ -987,7 +976,7 @@ def visual_stimulation():
     print(stimulus_df_sorted)
 
     # Store to HDD
-    stimulus_df_sorted.to_csv(f'{base_dir}/stimulus_protocol.csv', index=False)
+    stimulus_df_sorted.to_csv(f'{analysis_dir}/stimulus_protocol.csv', index=False)
     print('Stimulus Protocol store to HDD')
 
 
@@ -1030,20 +1019,28 @@ def create_binary(stimulus_protocol, ca_fr, ca_duration):
 
 def get_meta_data():
     msg_box('GET META DATA', 'STARTING TO GET META DATA', sep='-')
+    msg_box('INFO', 'The directory must have the following subdirectories:\n'
+                    'ventral_root_files: containing all raw ventral root recordings \n'
+                    'stimulation: containing all stimulus files\n'
+                    'analysis: results will be stored there', sep='-')
+
     olympus_setup_delay = 0.680  # Ahsan's Value
+    # olympus_setup_delay = 0
     time_stamp_key = '[Acquisition Parameters Common] ImageCaputreDate'
     time_stamp_key_ms = '[Acquisition Parameters Common] ImageCaputreDate+MilliSec'
     rec_duration_key = 'Time Per Series'
     rec_dt_key = 'Time Per Frame'
     Tk().withdraw()
     file_dir = askdirectory()
-    img_rec_meta_data_file = [s for s in os.listdir(file_dir) if 'recording_file_metadata' in s]
+    if not file_dir:
+        return None
+    img_rec_meta_data_file = [s for s in os.listdir(file_dir) if 'tiff_meta_data' in s]
     if not img_rec_meta_data_file:
         print('COULD NOT FINDE IMAGE RECORDING META DATA FILE')
-        print('Its file name must contain: "recording_file_metadata"')
+        print('Its file name must contain: "tiff_meta_data"')
         return None
     img_rec_meta_data_file = img_rec_meta_data_file[0]
-    rec_meta_data = pd.DataFrame()
+    # rec_meta_data = pd.DataFrame()
     if img_rec_meta_data_file.endswith('.csv'):
         rec_meta_data = pd.read_csv(f'{file_dir}/{img_rec_meta_data_file}', sep=',')
     elif img_rec_meta_data_file.endswith('.txt'):
@@ -1064,7 +1061,7 @@ def get_meta_data():
     img_rec_dt = float(rec_meta_data[rec_meta_data['Key'] == rec_dt_key]['Value'].item()) / (1000*1000)
     img_rec_fr = 1/img_rec_dt
 
-    raw_data_dir = f'{file_dir}/rawdata'
+    raw_data_dir = f'{file_dir}/ventral_root_files'
     file_list = os.listdir(raw_data_dir)
     # Get first time stamp of first vr file
     vr_files = [s for s in file_list if "ephys" in s]
@@ -1086,6 +1083,7 @@ def get_meta_data():
         'rec_id': rec_name,
         'rec_img_start': img_rec_start,
         'rec_img_start_plus_delay': img_rec_start + olympus_setup_delay,
+        'rec_img_olympus_delay': olympus_setup_delay,
         'rec_img_duration': img_rec_duration,
         'rec_img_dt': img_rec_dt,
         'rec_img_fr': img_rec_fr,
@@ -1094,12 +1092,12 @@ def get_meta_data():
         'rec_vr_duration': vr_end-vr_start
     }
     meta_data = pd.DataFrame(list(parameters_dict.items()), columns=['parameter', 'value'])
-    meta_data.to_csv(f'{file_dir}/{rec_name}_meta_data.csv')
+    meta_data.to_csv(f'{file_dir}/analysis/recording_meta_data.csv')
     print('Meta Data stored to HDD')
     print('')
 
 
-def create_cif_double_tau(fr, tau1, tau2, a=1, t_max_factor=10):
+def create_cif_double_tau(fr, tau1=2, tau2=10, a=1, t_max_factor=10):
     # Double Exponential Function to generate a Calcium Impulse Response Function
     # fr: Hz
     # tau1 and tau2: secs
@@ -1137,11 +1135,12 @@ def export_binaries():
     msg_box('COMPUTE STIMULUS BINARIES', 'STARTING TO COMPUTE STIMULUS BINARIES', sep='-')
     Tk().withdraw()
     base_dir = askdirectory()
-    meta_data_file_name = [s for s in os.listdir(base_dir) if 'meta_data.csv' in s][0]
-    protocol_file_name = [s for s in os.listdir(base_dir) if 'protocol' in s][0]
+    analysis_dir = f'{base_dir}/analysis'
+    meta_data_file_name = [s for s in os.listdir(analysis_dir) if 'recording_meta_data.csv' in s][0]
+    protocol_file_name = [s for s in os.listdir(analysis_dir) if 'protocol' in s][0]
 
-    meta_data = pd.read_csv(f'{base_dir}/{meta_data_file_name}')
-    protocol = pd.read_csv(f'{base_dir}/{protocol_file_name}')
+    meta_data = pd.read_csv(f'{analysis_dir}/{meta_data_file_name}')
+    protocol = pd.read_csv(f'{analysis_dir}/{protocol_file_name}')
     ca_recording_duration = float(meta_data[meta_data['parameter'] == 'rec_img_duration']['value'])
     ca_recording_fr = float(meta_data[meta_data['parameter'] == 'rec_img_fr']['value'])
     ca_time_axis = np.arange(0, ca_recording_duration, 1/ca_recording_fr)
@@ -1153,9 +1152,13 @@ def export_binaries():
     all_stimuli_binary_trace['Volt'] = binaries_df.sum(axis=1)
 
     # Convolve the binary for the complete stimulus trace (for plotting)
-    cif = create_cif_double_tau(fr=ca_recording_fr, tau1=0.01, tau2=7)
-    cif = cif / np.max(cif)
+    cif = create_cif_double_tau(fr=ca_recording_fr)
+    # cif = cif / np.max(cif)
     binary = all_stimuli_binary_trace['Volt'].to_numpy()
+
+    # Convert rect binary to onset impulse binary
+    binary = rect_to_onset_impulse(binary)
+
     reg = np.convolve(binary, cif, 'full')
     conv_pad = (len(reg) - len(binary))
     reg_same = reg[:-conv_pad]
@@ -1163,19 +1166,16 @@ def export_binaries():
     reg_same_df['Time'] = ca_time_axis
     reg_same_df['Volt'] = reg_same
 
-    reg_z = (reg_same - np.min(reg_same)) / np.max(reg_same)
     plt.plot(binary, 'b')
-    plt.plot(reg_z, 'r')
-    plt.plot(cif, 'g')
+    plt.plot(reg_same, 'r')
+    plt.plot(np.arange(123, len(cif)+123, 1), cif, 'g')
     plt.show()
 
-    embed()
-    exit()
     # Store to HDD
     # binaries_df.to_csv(f'{base_dir}/stimulus_binaries.csv', index=False)
     # stimulus_times.to_csv(f'{base_dir}/stimulus_times.csv', index=False)
-    all_stimuli_binary_trace.to_csv(f'{base_dir}/stimulus_trace.csv', index=False)
-    reg_same_df.to_csv(f'{base_dir}/stimulus_reg_trace.csv', index=False)
+    all_stimuli_binary_trace.to_csv(f'{analysis_dir}/stimulus_trace.csv', index=False)
+    reg_same_df.to_csv(f'{analysis_dir}/stimulus_reg_trace.csv', index=False)
     print('Stimulus Binary, Regressor and Stimulus Times (in Ca Recording Frame Rate) stored to HDD')
 
 
@@ -1198,15 +1198,16 @@ def reg_analysis_cut_out_responses():
 
     Tk().withdraw()
     base_dir = askdirectory()
-    meta_data_file_name = [s for s in os.listdir(base_dir) if 'meta_data.csv' in s][0]
+    analysis_dir = f'{base_dir}/analysis'
+    meta_data_file_name = [s for s in os.listdir(analysis_dir) if 'recording_meta_data.csv' in s][0]
     # protocol_file_name = [s for s in os.listdir(base_dir) if 'stimulus_times' in s][0]
-    protocol_file_name = [s for s in os.listdir(base_dir) if 'stimulus_protocol' in s][0]
+    protocol_file_name = [s for s in os.listdir(analysis_dir) if 'stimulus_protocol' in s][0]
 
     # regs_file_name = [s for s in os.listdir(base_dir) if 'regressor' in s][0]
     ca_rec_file_name = [s for s in os.listdir(base_dir) if 'raw_values' in s][0]
 
-    meta_data = pd.read_csv(f'{base_dir}/{meta_data_file_name}')
-    stimulus_protocol = pd.read_csv(f'{base_dir}/{protocol_file_name}')
+    meta_data = pd.read_csv(f'{analysis_dir}/{meta_data_file_name}')
+    stimulus_protocol = pd.read_csv(f'{analysis_dir}/{protocol_file_name}')
     # regs = pd.read_csv(f'{base_dir}/{regs_file_name}')
     ca_rec_raw = pd.read_csv(f'{base_dir}/{ca_rec_file_name}', index_col=0)
     ca_recording_fr = float(meta_data[meta_data['parameter'] == 'rec_img_fr']['value'])
@@ -1231,10 +1232,15 @@ def reg_analysis_cut_out_responses():
     # Get unique stimulus types
     s_types = protocol['stimulus_type'].unique()
 
+    # Compute Calcium Impulse Response Function
+    cif = create_cif_double_tau(ca_recording_fr)
+
     # Loop through all ROIs (cols of the ca recording data frame)
     # roi_scores = dict()
+    print('Please wait ...')
     result_list = []
     for roi_name in ca_rec:
+        # print(f'Starting ROI {roi_name} / {ca_rec.shape[1]} ...')
         # stimulus_type_scores = dict()
         # Loop through stimulus types (e.g. "movingtargetsmall")
         for s in s_types:
@@ -1260,7 +1266,10 @@ def reg_analysis_cut_out_responses():
                 # Create the Regressor on the fly
                 binary = np.zeros_like(ca_trace)
                 binary[pad_before_samples:len(binary)-pad_after_samples] = 1
-                cif = create_cif_double_tau(ca_recording_fr, tau1=0.5, tau2=2.0)
+
+                # Convert rect binary to onset impulses
+                binary = rect_to_onset_impulse(binary)
+
                 reg = np.convolve(binary, cif, 'full')
                 reg = reg / np.max(reg)
                 # ca_trace = reg + 0.4 * np.random.randn(len(reg))
@@ -1318,7 +1327,7 @@ def reg_analysis_cut_out_responses():
     results = pd.DataFrame(
         result_list,
         columns=['roi', 'stimulus_id', 'stimulus_type', 'trial', 'info', 'score', 'r_squared', 'slope', 'lag'])
-    results.to_csv(f'{base_dir}/linear_model_stimulus_scoring.csv', index=False)
+    results.to_csv(f'{analysis_dir}/linear_model_stimulus_scoring.csv', index=False)
     print('Linear Model Scoring Results Stored to HDD!')
 
 
@@ -1331,25 +1340,28 @@ def reg_analysis_cut_out_ventral_root():
     """
     # ToDo: - More information into doc string
 
-    msg_box('REGRESSOR ANALYSIS', 'STARTING TO CUT OUT RESPONSES AND COMPUTE REGRESSORS AND LINEAR MODEL SCORING', sep='-')
+    msg_box('VR REGRESSOR ANALYSIS', 'STARTING TO CUT OUT RESPONSES AND COMPUTE REGRESSORS AND LINEAR MODEL SCORING', sep='-')
 
-    plot_results = False
+    plot_results = True
     # padding in secs
-    pad_before = 2
-    pad_after = 3
+    pad_before = 5
+    pad_after = 10
     ca_dynamics_rise = 0
-    shifting_limit = 2
+    shifting_limit = 3
 
     Tk().withdraw()
     base_dir = askdirectory()
-    meta_data_file_name = [s for s in os.listdir(base_dir) if 'meta_data.csv' in s][0]
-    vr_activity_file_name = [s for s in os.listdir(base_dir) if 'ventral_root_activity' in s][0]
-    ca_rec_file_name = [s for s in os.listdir(base_dir) if 'raw_values' in s][0]
-    protocol_file_name = [s for s in os.listdir(base_dir) if 'stimulus_protocol' in s][0]
-    stimulus_protocol = pd.read_csv(f'{base_dir}/{protocol_file_name}')
+    analysis_dir = f'{base_dir}/analysis'
+    print('Please wait ...')
 
-    meta_data = pd.read_csv(f'{base_dir}/{meta_data_file_name}')
-    vr_activity = pd.read_csv(f'{base_dir}/{vr_activity_file_name}')
+    meta_data_file_name = [s for s in os.listdir(analysis_dir) if 'recording_meta_data.csv' in s][0]
+    vr_activity_file_name = [s for s in os.listdir(analysis_dir) if 'ventral_root_activity' in s][0]
+    ca_rec_file_name = [s for s in os.listdir(base_dir) if 'raw_values' in s][0]
+    protocol_file_name = [s for s in os.listdir(analysis_dir) if 'stimulus_protocol' in s][0]
+    stimulus_protocol = pd.read_csv(f'{analysis_dir}/{protocol_file_name}')
+
+    meta_data = pd.read_csv(f'{analysis_dir}/{meta_data_file_name}')
+    vr_activity = pd.read_csv(f'{analysis_dir}/{vr_activity_file_name}')
 
     ca_rec_raw = pd.read_csv(f'{base_dir}/{ca_rec_file_name}', index_col=0)
     ca_recording_fr = float(meta_data[meta_data['parameter'] == 'rec_img_fr']['value'])
@@ -1386,6 +1398,9 @@ def reg_analysis_cut_out_ventral_root():
     vr_activity_rand['start_idx'] = idx_rand
     vr_activity_rand['end_idx'] = idx_rand + 1
 
+    # Compute CIF
+    cif = create_cif_double_tau(ca_recording_fr)
+
     # Get unique stimulus types
     # Loop through all ROIs (cols of the ca recording data frame)
     all_results = []
@@ -1414,7 +1429,6 @@ def reg_analysis_cut_out_ventral_root():
                 binary = np.zeros_like(ca_trace)
                 binary[pad_before_samples:len(binary)-pad_after_samples] = 1
 
-                cif = create_cif_double_tau(ca_recording_fr, tau1=0.5, tau2=2.0)
                 reg = np.convolve(binary, cif, 'full')
                 # reg = reg / np.max(reg)
 
@@ -1440,6 +1454,7 @@ def reg_analysis_cut_out_ventral_root():
                 # reg_optimal = reg_optimal / np.max(reg_optimal)
                 conv_pad = (len(reg_optimal) - len(ca_trace))
                 reg_same = reg_optimal[:-conv_pad]
+                reg_same = reg_same / np.max(reg_same)
 
                 # Use Linear Regression Model to compute a Score
                 sc, rr, aa = apply_linear_model(xx=reg_same, yy=ca_trace)
@@ -1482,7 +1497,7 @@ def reg_analysis_cut_out_ventral_root():
         # Put all results into one data frame (long format)
         results = pd.DataFrame(
             result_list,
-            columns=['roi','stimulus_id', 'stimulus_type', 'trial', 'info', 'score', 'r_squared', 'slope', 'lag'])
+            columns=['roi', 'stimulus_id', 'stimulus_type', 'trial', 'info', 'score', 'r_squared', 'slope', 'lag'])
         all_results.append(results)
 
     if plot_results:
@@ -1510,19 +1525,19 @@ def reg_analysis_cut_out_ventral_root():
         plt.legend()
 
         #
-        bins_nr = 100
-        data_diff = all_results[0]['score'].diff()
-        random_diff = all_results[1]['score'].diff()
-        t = np.arange(0, 1, 1 / len(data_diff))
-        tau = 0.03
-        e_fit = np.exp(-t/tau) * 500
-
-        fig, axs = plt.subplots()
-        axs.hist(abs(data_diff), bins=bins_nr, label='data')
-        axs.hist(abs(random_diff), bins=bins_nr, label='random')
-        axs.plot(t, e_fit, 'r')
-        plt.legend()
-        plt.show()
+        # bins_nr = 100
+        # data_diff = all_results[0]['score'].diff()
+        # random_diff = all_results[1]['score'].diff()
+        # t = np.arange(0, 1, 1 / len(data_diff))
+        # tau = 0.03
+        # e_fit = np.exp(-t/tau) * 500
+        #
+        # fig, axs = plt.subplots()
+        # axs.hist(abs(data_diff), bins=bins_nr, label='data')
+        # axs.hist(abs(random_diff), bins=bins_nr, label='random')
+        # axs.plot(t, e_fit, 'r')
+        # plt.legend()
+        # plt.show()
 
         # ON vs OFF
         on_data = all_results[0][all_results[0]['info'] == 'ON']
@@ -1531,8 +1546,8 @@ def reg_analysis_cut_out_ventral_root():
         off_data_50 = np.percentile(off_data['score'], 50)
 
         fig, axs = plt.subplots(1, 2)
-        axs[0].set_title(f'ON, 95 percentile = {on_data_50:.3f}')
-        axs[1].set_title(f'OFF, 95 percentile = {off_data_50:.3f}')
+        axs[0].set_title(f'ON, median = {on_data_50:.3f}')
+        axs[1].set_title(f'OFF, median = {off_data_50:.3f}')
         for k, vn in enumerate(val_names):
             axs[0].hist(on_data[vn], bins=bins_nr, histtype=h_type[k], label=vn)
             axs[1].hist(off_data[vn], bins=bins_nr, histtype=h_type[k], label=vn)
@@ -1549,8 +1564,8 @@ def reg_analysis_cut_out_ventral_root():
         plt.legend()
         plt.show()
 
-    all_results[0].to_csv(f'{base_dir}/linear_model_ventral_root_scoring.csv', index=False)
-    all_results[1].to_csv(f'{base_dir}/linear_model_random_vr__scoring.csv', index=False)
+    all_results[0].to_csv(f'{analysis_dir}/linear_model_ventral_root_scoring.csv', index=False)
+    all_results[1].to_csv(f'{analysis_dir}/linear_model_random_vr__scoring.csv', index=False)
 
     # results.to_csv(f'{base_dir}/linear_model_ventral_root_scoring.csv', index=False)
 
@@ -1676,7 +1691,7 @@ def reg_analysis_ventral_root():
     reg_df = pd.DataFrame()
     reg_df['Time'] = ca_time
     reg_df['Volt'] = reg_same
-    reg_df.to_csv(f'{base_dir}/ventral_root_reg_trace.csv', index=False)
+    reg_df.to_csv(f'{base_dir}/analysis/ventral_root_reg_trace.csv', index=False)
     embed()
     exit()
 
@@ -1766,17 +1781,20 @@ def transform_ventral_root_recording():
     msg_box('CONVERT RAW VENTRAL ROOT RECORDINGS', 'STARTING TO CONVERT ALL VENTRAL ROOT RECORDING FILES', sep='-')
     Tk().withdraw()
     base_dir = askdirectory()
-    raw_data_dir = f'{base_dir}/rawdata'
+    if not base_dir:
+        return None
+
+    raw_data_dir = f'{base_dir}/ventral_root_files'
     file_list = os.listdir(raw_data_dir)
     vr_files = [s for s in file_list if "ephys" in s]
     vr_files = list(np.sort(vr_files))
-    # Load files
+
     vr_data = []
     vr_time_secs = []
-    vr_multi_entries_values = []
+    # vr_multi_entries_values = []
     vr_multi_entries_count = []
-    tag_val = 0
-    cc = 0
+    # tag_val = 0
+    # cc = 0
     # Loop through every ventral root recording file
     t0 = time.perf_counter()
     for f_name in vr_files:
@@ -1849,12 +1867,12 @@ def transform_ventral_root_recording():
 
     # Export to HDD
     print('... Export Ventral Root Trace to HDD ...')
-    vr_trace_export.to_csv(f'{base_dir}/ventral_root_trace.csv', index=False)
-    vr_trace_export_ds.to_csv(f'{base_dir}/ventral_root_trace_ds_x{ds_factor}.csv', index=False)
+    vr_trace_export.to_csv(f'{base_dir}/analysis/ventral_root_trace.csv', index=False)
+    vr_trace_export_ds.to_csv(f'{base_dir}/analysis/ventral_root_trace_ds_x{ds_factor}.csv', index=False)
 
     print('... Export Ventral Root Envelope to HDD ...')
-    vr_env_export.to_csv(f'{base_dir}/ventral_root_envelope.csv', index=False)
-    vr_env_export_ds.to_csv(f'{base_dir}/ventral_root_envelope_ds_x{ds_factor}.csv', index=False)
+    vr_env_export.to_csv(f'{base_dir}/analysis/ventral_root_envelope.csv', index=False)
+    vr_env_export_ds.to_csv(f'{base_dir}/analysis/ventral_root_envelope_ds_x{ds_factor}.csv', index=False)
     t1 = time.perf_counter()
     print(f'Collecting all Recordings took: {(t1-t0):.2f} secs')
 
@@ -1862,15 +1880,18 @@ def transform_ventral_root_recording():
 def ventral_root_detection():
     msg_box('VENTRAL ROOT ACTIVITY DETECTION', 'STARTING TO DETECT MOTOR EVENTS IN VENTRAL ROOT RECORDING', sep='-')
     Tk().withdraw()
-    base_dir = askdirectory()
+    base_dir1 = askdirectory()
+    base_dir = f'{base_dir1}/analysis'
+
     file_list = os.listdir(base_dir)
     th = float(input('Enter Detection Threshold (SD): '))
     print(f'Threshold was set to {th} SD')
+    print('Please wait ...')
 
-    meta_data_file_name = [s for s in os.listdir(base_dir) if 'meta_data.csv' in s][0]
+    meta_data_file_name = [s for s in os.listdir(base_dir) if 'recording_meta_data.csv' in s][0]
     meta_data = pd.read_csv(f'{base_dir}/{meta_data_file_name}')
-    vr_trace_file = [s for s in file_list if "ventral_root_trace" in s][0]
-    vr_env_file = [s for s in file_list if "ventral_root_envelope" in s][0]
+    vr_trace_file = [s for s in file_list if "ventral_root_trace.csv" in s][0]
+    vr_env_file = [s for s in file_list if "ventral_root_envelope.csv" in s][0]
     vr_trace = pd.read_csv(f'{base_dir}/{vr_trace_file}')
     vr_env = pd.read_csv(f'{base_dir}/{vr_env_file}')
     ca_fr = float(meta_data[meta_data['parameter'] == 'rec_img_fr']['value'])
@@ -1951,6 +1972,7 @@ def ventral_root_detection():
     cif = create_cif_double_tau(fr=ca_fr, tau1=0.5, tau2=3.0)
     reg_test, reg_test_same = reg_convolution(cif, vr_binary)
     reg_plot = (reg_test_same / np.max(reg_test_same)) * np.max(z_transform(org_trace))
+    reg_test_same = reg_test_same / np.max(reg_test_same)
 
     fig, axs = plt.subplots(2, 1, sharey=True, sharex=True)
     axs[0].plot(vr_trace['Time'], z_transform(org_trace), 'k')
@@ -1962,6 +1984,10 @@ def ventral_root_detection():
     axs[1].plot(vr_env['Time'], np.diff(binary, append=0)*10, 'r', lw=2)
     axs[1].plot(ca_time, vr_binary * th, 'go:', lw=1.5, alpha=0.7)
     axs[1].plot(ca_time, np.diff(vr_binary, append=0)*10, 'rx:', lw=1.5, alpha=0.7)
+    axs[1].set_xlabel('Time [s]')
+
+    axs[0].set_title('VR (black) and Regressor (red)')
+    axs[1].set_title('Detection Validation')
     plt.show()
 
     # Store to HDD
@@ -1997,6 +2023,7 @@ def print_options():
     print('5: Ventral Root Activity Detection')
     print('6: LM Scoring for Ventral Root')
     print('7: Run Clustering')
+    print('8: SIL TEST')
     print('')
     print('To see options type: >> options')
     print('To exit type: >> exit')
@@ -2024,6 +2051,8 @@ if __name__ == '__main__':
             reg_analysis_cut_out_ventral_root()
         elif usr == '7':
             compute_clustering()
+        elif usr == '8':
+            sil()
         elif usr == 'options':
             print_options()
         elif usr == 'exit':
