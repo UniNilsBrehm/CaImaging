@@ -833,6 +833,11 @@ def visual_stimulation():
     meta_data = pd.read_csv(f'{analysis_dir}/{meta_data_file_name}')
     time_zero = float(meta_data[meta_data['parameter'] == 'rec_img_start_plus_delay']['value'].item())
 
+    # Compute Ca Recording Time Axis
+    ca_fr = float(meta_data[meta_data['parameter'] == 'rec_img_fr']['value'])
+    ca_duration = float(meta_data[meta_data['parameter'] == 'rec_img_duration']['value'])
+    ca_time = np.arange(0, ca_duration, 1/ca_fr)
+
     file_list = os.listdir(stimulus_data_dir)
     stimulus = dict()
     for f_name in file_list:
@@ -860,10 +865,17 @@ def visual_stimulation():
             trial_end.append(t_secs[-1])
             val = 1
             cc = 1
+
             # put all trials and their values into the main data frame
-            # [onset, offset, binary value, stimulus id, stimulus type, info, trial]
             for s, e in zip(trial_start, trial_end):
-                stimulus_df = pd.concat([stimulus_df, pd.Series([s, e, val, f'{stim_name}_{cc}', stim_name, 0, cc]).to_frame().T], ignore_index=True)
+                # Look where in the ca recording time axis is the stimulus onset (take the next point in the past (+1))
+                idx_start = np.where(ca_time <= s)[0][-1] + 1
+                idx_end = np.where(ca_time <= e)[0][-1] + 1
+                stimulus_df = pd.concat(
+                    [stimulus_df,
+                     pd.Series(
+                         [idx_start, idx_end, s, e, val, f'{stim_name}_{cc}', 'movingtarget', 'small', cc]
+                     ).to_frame().T], ignore_index=True)
                 cc += 1
 
         # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -890,7 +902,13 @@ def visual_stimulation():
             # put all trials and their values into the main data frame
             # [onset, offset, binary value, stimulus id, stimulus type, info, trial]
             for s, e in zip(trial_start, trial_end):
-                stimulus_df = pd.concat([stimulus_df, pd.Series([s, e, val, f'{stim_name}_{cc}', stim_name, 0, cc]).to_frame().T], ignore_index=True)
+                # Look where in the ca recording time axis is the stimulus onset (take the next point in the past (+1))
+                idx_start = np.where(ca_time <= s)[0][-1] + 1
+                idx_end = np.where(ca_time <= e)[0][-1] + 1
+                stimulus_df = pd.concat(
+                    [stimulus_df, pd.Series(
+                        [idx_start, idx_end, s, e, val, f'{stim_name}_{cc}', 'movingtarget', 'large', cc]
+                    ).to_frame().T], ignore_index=True)
                 cc += 1
 
         # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -922,10 +940,14 @@ def visual_stimulation():
                     cc_on += 1
                     val = 1
                     cc_trial = cc_on
+                # Look where in the ca recording time axis is the stimulus onset (take the next point in the past (+1))
+                idx_start = np.where(ca_time <= i)[0][-1] + 1
+                idx_end = np.where(ca_time <= i+flash_dur)[0][-1] + 1
                 stimulus_df = pd.concat(
                     [stimulus_df,
                      pd.Series(
-                         [i, i+flash_dur, val, f'{stim_name}_light_{cc_trial}_{state}', stim_name, state, cc_trial]).to_frame().T],
+                         [idx_start, idx_end, i, i+flash_dur, val, f'{stim_name}_light_{cc_trial}_{state}', stim_name, state, cc_trial]
+                     ).to_frame().T],
                     ignore_index=True)
                 cc += 1
 
@@ -944,7 +966,13 @@ def visual_stimulation():
                 start_sec = convert_to_secs(s, method=1) - time_zero
                 e = stimulus[stim_name][idx_o][2].iloc[-1][11:]
                 end_sec = convert_to_secs(e, method=1) - time_zero
-                stimulus_df = pd.concat([stimulus_df, pd.Series([start_sec, end_sec, vals[cc], f'{stim_name}_{o}', stim_name, o, 1]).to_frame().T], ignore_index=True)
+                # Look where in the ca recording time axis is the stimulus onset (take the next point in the past (+1))
+                idx_start = np.where(ca_time <= start_sec)[0][-1] + 1
+                idx_end = np.where(ca_time <= end_sec)[0][-1] + 1
+                stimulus_df = pd.concat(
+                    [stimulus_df, pd.Series(
+                        [idx_start, idx_end, start_sec, end_sec, vals[cc], f'{stim_name}_{o}', stim_name, o, 1]
+                    ).to_frame().T], ignore_index=True)
                 cc += 1
 
         # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -955,7 +983,13 @@ def visual_stimulation():
             e = stimulus[stim_name][3].iloc[-1][11:]
             start_sec = convert_to_secs(s, method=1) - time_zero
             end_sec = convert_to_secs(e, method=1) - time_zero
-            stimulus_df = pd.concat([stimulus_df, pd.Series([start_sec, end_sec, val, stim_name, stim_name, 0, 1]).to_frame().T], ignore_index=True)
+            # Look where in the ca recording time axis is the stimulus onset (take the next point in the past (+1))
+            idx_start = np.where(ca_time <= start_sec)[0][-1] + 1
+            idx_end = np.where(ca_time <= end_sec)[0][-1] + 1
+            stimulus_df = pd.concat(
+                [stimulus_df, pd.Series(
+                    [idx_start, idx_end,start_sec, end_sec, val, stim_name, 'looming', 0, 1]
+                ).to_frame().T], ignore_index=True)
 
         # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
         # REVERSE LOOMING
@@ -965,11 +999,17 @@ def visual_stimulation():
             e = stimulus[stim_name][3].iloc[-1][11:]
             start_sec = convert_to_secs(s, method=1) - time_zero
             end_sec = convert_to_secs(e, method=1) - time_zero
-            stimulus_df = pd.concat([stimulus_df, pd.Series([start_sec, end_sec, val, stim_name, stim_name, 1, 1]).to_frame().T], ignore_index=True)
+            # Look where in the ca recording time axis is the stimulus onset (take the next point in the past (+1))
+            idx_start = np.where(ca_time <= start_sec)[0][-1] + 1
+            idx_end = np.where(ca_time <= end_sec)[0][-1] + 1
+            stimulus_df = pd.concat(
+                [stimulus_df, pd.Series(
+                    [idx_start, idx_end, start_sec, end_sec, val, stim_name, 'looming', 1, 1]
+                ).to_frame().T], ignore_index=True)
 
     # Names of the data frame columns
     # [onset, offset, binary value, stimulus id, stimulus type, info, trial]
-    stimulus_df.columns = ['start', 'end', 'value', 'stimulus_id', 'stimulus_type', 'info', 'trial']
+    stimulus_df.columns = ['start_idx', 'end_idx', 'start', 'end', 'value', 'stimulus_id', 'stimulus_type', 'info', 'trial']
 
     # sort data by onset time (start)
     stimulus_df_sorted = stimulus_df.sort_values(by=['start'])
@@ -978,6 +1018,112 @@ def visual_stimulation():
     # Store to HDD
     stimulus_df_sorted.to_csv(f'{analysis_dir}/stimulus_protocol.csv', index=False)
     print('Stimulus Protocol store to HDD')
+
+
+def construct_binary_trace(p, tag, time_axis, cif, use_only_onset=True):
+    p_tag = p[p['info'] == tag]
+    binary = np.zeros_like(time_axis)
+    # Compute Binary
+    for s, e in zip(p_tag['start_idx'], p_tag['end_idx']):
+        binary[s:e] = 1
+
+    # Compute Reg
+    if use_only_onset:
+        # Convert rect binary to onset impulses
+        binary = rect_to_onset_impulse(binary)
+    reg = np.convolve(binary, cif, 'full')
+
+    # Cut it to the same size as binary
+    conv_pad = (len(reg) - len(binary))
+    reg_same = reg[:-conv_pad]
+    return binary, reg_same
+
+
+def create_regs():
+    msg_box('COMPUTE STIMULUS BINARIES', 'STARTING TO COMPUTE STIMULUS BINARIES', sep='-')
+    Tk().withdraw()
+    base_dir = askdirectory()
+    analysis_dir = f'{base_dir}/analysis'
+    meta_data_file_name = [s for s in os.listdir(analysis_dir) if 'recording_meta_data.csv' in s][0]
+    protocol_file_name = [s for s in os.listdir(analysis_dir) if 'protocol' in s][0]
+
+    meta_data = pd.read_csv(f'{analysis_dir}/{meta_data_file_name}')
+    stimulus_protocol = pd.read_csv(f'{analysis_dir}/{protocol_file_name}')
+    ca_duration = float(meta_data[meta_data['parameter'] == 'rec_img_duration']['value'])
+    ca_fr = float(meta_data[meta_data['parameter'] == 'rec_img_fr']['value'])
+    ca_time = np.arange(0, ca_duration, 1/ca_fr)
+
+    stimulus_types = stimulus_protocol['stimulus_type'].unique()
+    cif = create_cif_double_tau(fr=ca_fr)
+    binary_df = pd.DataFrame()
+    binary_df['Time'] = ca_time
+    reg_df = pd.DataFrame()
+    reg_df['Time'] = ca_time
+
+    for s_type in stimulus_types:
+        p = stimulus_protocol[stimulus_protocol['stimulus_type'] == s_type]
+        # MOVING TARGETS
+        if s_type == 'movingtarget':
+            binary, reg = construct_binary_trace(p, tag='small', time_axis=ca_time, cif=cif)
+            binary_df[f'{s_type}_small'] = binary
+            reg_df[f'{s_type}_small'] = reg
+
+            binary, reg = construct_binary_trace(p, tag='large', time_axis=ca_time, cif=cif)
+            binary_df[f'{s_type}_large'] = binary
+            reg_df[f'{s_type}_large'] = reg
+
+        # FLASH
+        if s_type == 'flash':
+            binary, reg = construct_binary_trace(p, tag='ON', time_axis=ca_time, cif=cif)
+            binary_df[f'{s_type}_on'] = binary
+            reg_df[f'{s_type}_on'] = reg
+
+            binary, reg = construct_binary_trace(p, tag='OFF', time_axis=ca_time, cif=cif)
+            binary_df[f'{s_type}_off'] = binary
+            reg_df[f'{s_type}_off'] = reg
+
+        # GRATING
+        if s_type == 'grating':
+            binary, reg = construct_binary_trace(p, tag='0', time_axis=ca_time, cif=cif)
+            binary_df[f'{s_type}_0'] = binary
+            reg_df[f'{s_type}_0'] = reg
+
+            binary, reg = construct_binary_trace(p, tag='90', time_axis=ca_time, cif=cif)
+            binary_df[f'{s_type}_90'] = binary
+            reg_df[f'{s_type}_90'] = reg
+
+            binary, reg = construct_binary_trace(p, tag='180', time_axis=ca_time, cif=cif)
+            binary_df[f'{s_type}_180'] = binary
+            reg_df[f'{s_type}_180'] = reg
+
+            binary, reg = construct_binary_trace(p, tag='270', time_axis=ca_time, cif=cif)
+            binary_df[f'{s_type}_270'] = binary
+            reg_df[f'{s_type}_270'] = reg
+
+        # LOOMING
+        if s_type == 'looming':
+            # 0: normal, 1: reverse
+            binary, reg = construct_binary_trace(p, tag='0', time_axis=ca_time, cif=cif)
+            binary_df[f'{s_type}_0'] = binary
+            reg_df[f'{s_type}_0'] = reg
+
+            binary, reg = construct_binary_trace(p, tag='1', time_axis=ca_time, cif=cif)
+            binary_df[f'{s_type}_1'] = binary
+            reg_df[f'{s_type}_1'] = reg
+
+    # reg_types = ['movingtarget_small', 'movingtarget_large', 'flash_on', 'flash_off',
+    #              'grating_0', 'grating_90', 'grating_180', 'grating_270', 'looming_0', 'looming_1']
+    for stimulus in binary_df:
+        if stimulus != 'Time':
+            plt.plot(binary_df['Time'], binary_df[stimulus])
+            plt.plot(reg_df['Time'], reg_df[stimulus])
+    plt.plot(cif, 'r')
+    plt.show()
+
+    # Store to HDD
+    binary_df.to_csv(f'{analysis_dir}/stimulus_binaries.csv', index=False)
+    binary_df.to_csv(f'{analysis_dir}/stimulus_regs.csv', index=False)
+    print('Stored Stimulus Binaries and Regs to HDD')
 
 
 def create_binary(stimulus_protocol, ca_fr, ca_duration):
@@ -1097,38 +1243,26 @@ def get_meta_data():
     print('')
 
 
-def create_cif_double_tau(fr, tau1=2, tau2=10, a=1, t_max_factor=10):
+def create_cif_double_tau(fr, tau1=2, tau2=7, a=1, t_max_factor=10):
     # Double Exponential Function to generate a Calcium Impulse Response Function
     # fr: Hz
     # tau1 and tau2: secs
+
+    if tau2 < tau1/3:
+        tau2 = tau1/3
+        print('WARNING: Tau2 value is smaller than Tau1/3\n'
+              'will set Tau2=Tau1/3')
+
     t_max = tau2 * t_max_factor  # in sec
     t_cif = np.arange(0, t_max*fr, 1)
     tau1_samples = tau1 * fr
     tau2_samples = tau2 * fr
 
-    cif = a * (1 - np.exp(-(t_cif/tau1_samples)))*np.exp(-(t_cif/tau2_samples))
+    if tau1_samples == 0:
+        cif = a * np.exp(-(t_cif / tau2_samples))
+    else:
+        cif = a * (1 - np.exp(-(t_cif/tau1_samples)))*np.exp(-(t_cif/tau2_samples))
     return cif
-
-
-# def create_regressors():
-#     msg_box('CREATE REGRESSORS', 'STARTING TO COMPUTE STIMULUS REGRESSORS', sep='-')
-#     Tk().withdraw()
-#     base_dir = askdirectory()
-#     meta_data_file_name = [s for s in os.listdir(base_dir) if 'meta_data.csv' in s][0]
-#     binaries_file_name = [s for s in os.listdir(base_dir) if 'binaries' in s][0]
-#
-#     meta_data = pd.read_csv(f'{base_dir}/{meta_data_file_name}')
-#     binaries = pd.read_csv(f'{base_dir}/{binaries_file_name}')
-#
-#     ca_recording_fr = float(meta_data[meta_data['parameter'] == 'rec_img_fr']['value'])
-#     ca_impulse_response_function = create_cif_double_tau(fr=ca_recording_fr, tau1=0.1, tau2=1.0)
-#
-#     # Convolve Binary with CIF to compute the regressors
-#     regs = dict()
-#     for k in range(binaries.shape[1]):
-#         regs[binaries.keys()[k]] = np.convolve(binaries.iloc[:, k], ca_impulse_response_function, 'full')
-#     pd.DataFrame(regs).to_csv(f'{base_dir}/stimulus_regressors.csv', index=False)
-#     print('REGRESSORS STORED TO HDD')
 
 
 def export_binaries():
@@ -1260,8 +1394,6 @@ def reg_analysis_cut_out_responses():
                 ca_rec_cut_out = ca_rec.iloc[start:end].reset_index(drop=True)
                 cc.append(ca_rec_cut_out)
                 ca_trace = ca_rec_cut_out[roi_name].to_numpy()
-                # Normalize (raw) trace to max = 1: For the final version there should be the delta f over f values
-                ca_trace = ca_trace / np.max(ca_trace)
 
                 # Create the Regressor on the fly
                 binary = np.zeros_like(ca_trace)
@@ -2023,7 +2155,7 @@ def print_options():
     print('5: Ventral Root Activity Detection')
     print('6: LM Scoring for Ventral Root')
     print('7: Run Clustering')
-    print('8: SIL TEST')
+    print('8: Create Regs (new method)')
     print('')
     print('To see options type: >> options')
     print('To exit type: >> exit')
@@ -2052,7 +2184,7 @@ if __name__ == '__main__':
         elif usr == '7':
             compute_clustering()
         elif usr == '8':
-            sil()
+            create_regs()
         elif usr == 'options':
             print_options()
         elif usr == 'exit':
